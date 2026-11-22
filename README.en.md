@@ -1,12 +1,12 @@
 # Gemini GitHub MCP Proxy
 
-Give Gemini Web and the Gemini mobile app real GitHub development tools without requiring `gh`: read repositories, edit files, push commits, create Draft PRs, and manage Issues.
+Use GitHub from Gemini Web and the Gemini mobile app without `gh`: read repositories, edit files, push commits, create pull requests, manage Issues, and call every tool exposed by GitHub Remote MCP that your token permits.
 
-Deploy **one Worker per person**, with that person's own GitHub PAT. Do not share one Worker as a multi-user service; every connected user would act as the PAT owner.
+Deploy one Worker per person with that person's own GitHub PAT. The Worker does not impose a second tool whitelist: **the PAT defines GitHub authority, and the user decides which tools each task uses.**
 
-## Quick start
+## Install
 
-Install from the fixed GitHub Release asset. No npm account is required:
+No npm account is required. Packages are distributed through GitHub Releases.
 
 **macOS / Linux**
 
@@ -20,7 +20,7 @@ curl -fsSL https://github.com/hrygo/gemini-github-mcp-proxy/releases/latest/down
 irm https://github.com/hrygo/gemini-github-mcp-proxy/releases/latest/download/install.ps1 | iex
 ```
 
-Or download `gemini-github-mcp-proxy.tgz` and install it manually:
+Manual install:
 
 ```bash
 npm install --global \
@@ -28,81 +28,72 @@ npm install --global \
   https://github.com/hrygo/gemini-github-mcp-proxy/releases/latest/download/gemini-github-mcp-proxy.tgz
 ```
 
-The package dependencies still come from the public npm Registry. The tool itself does not need an npm account or an npm-published package.
+The GitHub installer verifies `SHA256SUMS`. Public npm Registry access is used for dependencies, but the tool itself does not need an npm account or npm publishing.
 
-Requirements:
+## Permission model
 
-- Node.js 22+
-- A Cloudflare account
-- A GitHub fine-grained PAT scoped to selected repositories with:
-  - Metadata: Read
-  - Contents: Read and write
-  - Issues: Read and write
-  - Pull requests: Read and write
+All upstream GitHub MCP tools are exposed by default. Actual results depend on:
+
+| Layer | Responsibility |
+|---|---|
+| GitHub PAT | Repository access and resource permissions |
+| GitHub Remote MCP | Tools currently available upstream |
+| Gemini | Tool selection and per-action approval |
+
+Use a fine-grained PAT and choose only the repositories and permissions you want. A common writable development baseline is Metadata read, Contents read/write, Issues read/write, and Pull requests read/write. Add Workflows write when editing workflow files, Actions read/write for CI operations, and other permissions when you intentionally need them. Classic PAT scopes work too.
+
+To reduce context or explicitly expose a subset:
+
+```bash
+gemini-github-mcp setup --tools get_file_contents,create_branch,create_or_update_file,create_pull_request
+```
+
+The selection is persisted as non-sensitive local configuration and reused by `setup --rotate`. Use `--tools all` to restore the full upstream set. Invalid or incomplete options fail closed instead of silently falling back to all tools.
+
+## Deploy
 
 ```bash
 npx wrangler login
 gemini-github-mcp setup
 ```
 
-The setup command deploys the Worker, generates secrets, uploads them to Cloudflare, verifies OAuth/DCR, and prints:
-
-```text
-Connector name: GitHub Dev MCP
-MCP URL: https://gemini-github-mcp-proxy.<your-subdomain>.workers.dev/mcp
-Authorization PIN: <shown once>
-```
+The installer and setup command never persist the PAT, authorization PIN, or signing secret outside Cloudflare Secrets.
 
 ## Connect Gemini
 
 1. Open Gemini Web → Settings → Connected apps.
 2. Add a custom MCP app named `GitHub Dev MCP`.
 3. Enter the MCP URL printed by setup.
-4. Complete OAuth and enter the generated 12-digit authorization PIN.
+4. Complete OAuth and enter the generated 12-digit PIN.
 5. The same Google account can use the connector on Gemini mobile.
 
-In every new chat:
+In every new chat, type `@`, select `GitHub Dev MCP`, then enter the task.
 
-1. Type `@`.
-2. Select `GitHub Dev MCP` from the autocomplete menu.
-3. Enter the task.
+## Architecture
 
-Typing the connector name as plain text does not reliably bind the tools.
+```mermaid
+flowchart LR
+    G[Gemini Web / Mobile] -->|OAuth 2.1 + S256 PKCE| W[Cloudflare Worker]
+    W -->|PAT + optional X-MCP-Tools| M[GitHub Remote MCP]
+    M -->|PAT-scoped requests| A[GitHub API]
+    A --> R[Repositories / Issues / PRs / Actions]
+```
+
+The Worker exists to bridge Gemini's OAuth registration/refresh requirements, keep the PAT out of Gemini, and convert embedded text resources that Gemini otherwise drops.
 
 ## Security
 
-- The Worker injects a GitHub PAT stored only in Cloudflare Secrets.
+- The Worker injects a PAT stored only in Cloudflare Secrets.
 - Gemini never receives the PAT.
-- The authorization page requires a random 12-digit PIN.
+- OAuth uses public-client DCR and mandatory S256 PKCE.
+- Authorization PIN submissions are limited to 10 attempts per source per minute with Cloudflare Rate Limiting.
 - `/mcp` requires a signed Bearer token.
-- Destructive tools such as `delete_file` and `merge_pull_request` are excluded.
+- The tool surface is not silently reduced. High-impact operations still require a capable PAT and your explicit instruction/approval.
+- Access and refresh tokens are stateless 10-year signed tokens; rotating `SIGNING_SECRET` revokes them together.
+- Cloudflare Rate Limiting is approximate and scoped by edge location; it is defense in depth, not an account system.
 
-See [SECURITY.md](SECURITY.md) for the threat model and rotation procedure.
+See [SECURITY.md](SECURITY.md) and [TROUBLESHOOTING.md](TROUBLESHOOTING.md).
 
-## Commands
+## Share
 
-```bash
-gemini-github-mcp setup            # first deployment
-gemini-github-mcp setup --rotate   # rotate all secrets
-gemini-github-mcp verify           # verify deployed endpoints
-npm run check                                # source development checks
-npm run deploy                               # redeploy current source only
-```
-
-## Sharing
-
-Share the [latest GitHub Release](https://github.com/hrygo/gemini-github-mcp-proxy/releases/latest). Friends do not need an npm account:
-
-```bash
-curl -fsSL https://github.com/hrygo/gemini-github-mcp-proxy/releases/latest/download/install.sh | sh
-npx wrangler login
-gemini-github-mcp setup
-```
-
-Never share a GitHub PAT, Cloudflare Secret, authorization PIN, or an already-authorized Worker URL unless you intend to grant access to your GitHub identity.
-
-## Why a Worker is required
-
-GitHub's hosted Remote MCP currently lacks the complete Dynamic Client Registration and refresh-token behavior expected by Gemini. It also returns file bodies as MCP `EmbeddedResource` blocks that Gemini drops. This Worker provides the OAuth bridge, PAT isolation, tool allowlist, and text normalization.
-
-See [TROUBLESHOOTING.md](TROUBLESHOOTING.md) when the connector does not appear or tools are not invoked.
+Share the [latest GitHub Release](https://github.com/hrygo/gemini-github-mcp-proxy/releases/latest), never an already-authorized Worker URL. Every user should deploy with their own Cloudflare account and GitHub PAT.

@@ -10,5 +10,15 @@
   "vars": {
     "UPSTREAM_MCP_URL": "https://api.githubcopilot.com/mcp/",
     "ALLOWED_REDIRECT_PREFIX": "https://oauth-redirect.googleusercontent.com/r/user_bound_custom-mcp-"
-  }
+  },
+  "ratelimits": [
+    {
+      "name": "AUTHORIZE_RATE_LIMITER",
+      "namespace_id": "1001",
+      "simple": {
+        "limit": 10,
+        "period": 60
+      }
+    }
+  ]
 }

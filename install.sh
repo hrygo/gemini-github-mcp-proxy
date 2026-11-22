@@ -5,8 +5,13 @@ repo="hrygo/gemini-github-mcp-proxy"
 base_url="https://github.com/${repo}/releases/latest/download"
 archive="gemini-github-mcp-proxy.tgz"
 
-if ! command -v npm >/dev/null 2>&1; then
+if ! command -v node >/dev/null 2>&1 || ! command -v npm >/dev/null 2>&1; then
   echo "未找到 npm。请先安装 Node.js 22 或更高版本。" >&2
+  exit 1
+fi
+node_major=$(node -p 'Number(process.versions.node.split(".")[0])')
+if [ "$node_major" -lt 22 ]; then
+  echo "当前 Node.js 版本过低。请升级到 Node.js 22 或更高版本。" >&2
   exit 1
 fi
 if ! command -v curl >/dev/null 2>&1; then
@@ -36,9 +41,14 @@ else
 fi
 
 echo "正在安装 Gemini GitHub MCP..."
-npm install --global \
-  --allow-scripts=esbuild,fsevents,workerd \
-  "${tmp_dir}/${archive}"
+npm_major=$(npm --version | awk -F. '{print $1}')
+if [ "$npm_major" -ge 12 ]; then
+  npm install --global \
+    --allow-scripts=esbuild,fsevents,workerd \
+    "${tmp_dir}/${archive}"
+else
+  npm install --global "${tmp_dir}/${archive}"
+fi
 gemini-github-mcp --version
 
 cat <<'EOF'

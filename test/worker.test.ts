@@ -1,6 +1,5 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import worker, {
-  DEFAULT_UPSTREAM_TOOLS,
   normalizeGitHubMcpContent,
   normalizeGitHubMcpJson,
   normalizeGitHubMcpSseLine,
@@ -15,8 +14,21 @@ const env = {
   UPSTREAM_MCP_URL: "https://example.invalid/mcp/",
 };
 
-async function call(path: string, init: RequestInit = {}): Promise<Response> {
-  return worker.fetch(new Request(`https://proxy.example${path}`, init), env) as Promise<Response>;
+type TestEnv = typeof env & {
+  AUTHORIZE_RATE_LIMITER?: {
+    limit(options: { key: string }): Promise<{ success: boolean }>;
+  };
+};
+
+async function call(
+  path: string,
+  init: RequestInit = {},
+  overrides: Partial<TestEnv> = {},
+): Promise<Response> {
+  return worker.fetch(new Request(`https://proxy.example${path}`, init), {
+    ...env,
+    ...overrides,
+  }) as Promise<Response>;
 }
 
 function getRedirectLocation(response: Response): URL {
@@ -160,6 +172,60 @@ describe("Gemini GitHub MCP proxy", () => {
     expect(badRedirect.status).toBe(400);
   });
 
+  it("rejects unsupported authorization methods", async () => {
+    const response = await call("/authorize", { method: "PUT" });
+    expect(response.status).toBe(405);
+    expect(response.headers.get("allow")).toBe("GET, POST");
+  });
+
+  it("rate limits authorization attempts before PIN verification", async () => {
+    const limiter = {
+      limit: vi
+        .fn()
+        .mockResolvedValueOnce({ success: true })
+        .mockResolvedValueOnce({ success: false }),
+    };
+    const form = new URLSearchParams({
+      redirect_uri:
+        "https://oauth-redirect.googleusercontent.com/r/user_bound_custom-mcp-test",
+      code_challenge: "A".repeat(43),
+      code_challenge_method: "S256",
+      pin: "000000",
+    });
+
+    const allowed = await call(
+      "/authorize",
+      {
+        method: "POST",
+        headers: {
+          "cf-connecting-ip": "203.0.113.7",
+          "content-type": "application/x-www-form-urlencoded",
+        },
+        body: form,
+      },
+      { AUTHORIZE_RATE_LIMITER: limiter },
+    );
+    expect(allowed.status).toBe(401);
+
+    const denied = await call(
+      "/authorize",
+      {
+        method: "POST",
+        headers: {
+          "cf-connecting-ip": "203.0.113.7",
+          "content-type": "application/x-www-form-urlencoded",
+        },
+        body: form,
+      },
+      { AUTHORIZE_RATE_LIMITER: limiter },
+    );
+    expect(denied.status).toBe(429);
+    expect(denied.headers.get("retry-after")).toBe("60");
+    expect(limiter.limit).toHaveBeenCalledWith({
+      key: "203.0.113.7:authorize",
+    });
+  });
+
   it("requires S256 PKCE and rejects unsupported client credentials", async () => {
     const redirectUri =
       "https://oauth-redirect.googleusercontent.com/r/user_bound_custom-mcp-test";
@@ -270,25 +336,89 @@ describe("Gemini GitHub MCP proxy", () => {
     );
   });
 
-  it("exposes development tools without repository-destructive operations", () => {
-    const tools = DEFAULT_UPSTREAM_TOOLS.split(",");
-    expect(tools).toEqual(
-      expect.arrayContaining([
-        "get_file_contents",
-        "create_branch",
-        "push_files",
-        "create_pull_request",
-        "issue_write",
-        "add_issue_comment",
-      ]),
+  it("passes the full upstream tool surface through unless explicitly configured", async () => {
+    const verifier = "test-verifier-with-enough-entropy";
+    const digest = await crypto.subtle.digest(
+      "SHA-256",
+      new TextEncoder().encode(verifier),
     );
-    expect(tools).not.toEqual(
-      expect.arrayContaining([
-        "delete_file",
-        "merge_pull_request",
-        "create_repository",
-        "fork_repository",
-      ]),
+    const challenge = btoa(String.fromCharCode(...new Uint8Array(digest)))
+      .replaceAll("+", "-")
+      .replaceAll("/", "_")
+      .replace(/=+$/, "");
+    const redirectUri =
+      "https://oauth-redirect.googleusercontent.com/r/user_bound_custom-mcp-test";
+    const authorize = await call("/authorize", {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        client_id: "mcp-client-test",
+        redirect_uri: redirectUri,
+        code_challenge: challenge,
+        code_challenge_method: "S256",
+        pin: env.ADMIN_PIN,
+      }),
+    });
+    const code = getRedirectLocation(authorize).searchParams.get("code");
+    const token = await call("/token", {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        grant_type: "authorization_code",
+        code: code!,
+        code_verifier: verifier,
+        client_id: "mcp-client-test",
+      }),
+    });
+    const accessToken = ((await token.json()) as { access_token: string })
+      .access_token;
+
+    const upstreamRequests: Array<{
+      init?: RequestInit;
+      input: RequestInfo | URL;
+    }> = [];
+    const fetchMock = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        upstreamRequests.push({ input, init });
+        return new Response(
+          JSON.stringify({ jsonrpc: "2.0", id: 1, result: {} }),
+          {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          },
+        );
+      },
     );
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      await call("/mcp", {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${accessToken}`,
+          "content-type": "application/json",
+        },
+        body: "{}",
+      });
+      const defaultHeaders = upstreamRequests[0].init?.headers as Headers;
+      expect(defaultHeaders.get("x-mcp-tools")).toBeNull();
+
+      await worker.fetch(
+        new Request("https://proxy.example/mcp", {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${accessToken}`,
+            "content-type": "application/json",
+          },
+          body: "{}",
+        }),
+        { ...env, UPSTREAM_TOOLS: "get_file_contents,delete_file" },
+      );
+      const selectedHeaders = upstreamRequests[1].init?.headers as Headers;
+      expect(selectedHeaders.get("x-mcp-tools")).toBe(
+        "get_file_contents,delete_file",
+      );
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });

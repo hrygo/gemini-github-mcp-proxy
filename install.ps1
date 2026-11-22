@@ -5,8 +5,13 @@ $baseUrl = "https://github.com/$repo/releases/latest/download"
 $archive = "gemini-github-mcp-proxy.tgz"
 $tempDir = Join-Path ([System.IO.Path]::GetTempPath()) ("gemini-github-mcp-" + [guid]::NewGuid())
 
-if (-not (Get-Command npm -ErrorAction SilentlyContinue)) {
+if (-not (Get-Command node -ErrorAction SilentlyContinue) -or
+    -not (Get-Command npm -ErrorAction SilentlyContinue)) {
     throw "未找到 npm。请先安装 Node.js 22 或更高版本。"
+}
+$nodeMajor = [int](((node --version).TrimStart("v") -split "\.")[0])
+if ($nodeMajor -lt 22) {
+    throw "当前 Node.js 版本过低。请升级到 Node.js 22 或更高版本。"
 }
 
 New-Item -ItemType Directory -Path $tempDir | Out-Null
@@ -25,7 +30,13 @@ try {
     }
 
     Write-Host "正在安装 Gemini GitHub MCP..."
-    npm install --global --allow-scripts=esbuild,fsevents,workerd $archivePath
+    $npmMajor = [int](((npm --version) -split "\.")[0])
+    if ($npmMajor -ge 12) {
+        npm install --global --allow-scripts=esbuild,fsevents,workerd $archivePath
+    }
+    else {
+        npm install --global $archivePath
+    }
     gemini-github-mcp --version
 
     Write-Host ""

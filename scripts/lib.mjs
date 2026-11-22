@@ -69,3 +69,62 @@ export function findWorkersDevUrl(output) {
   const matches = output.match(/https:\/\/[^\s"'<>]+\.workers\.dev(?:\/[^\s"'<>]*)?/g);
   return matches?.at(-1)?.replace(/[),.;]+$/, "") ?? null;
 }
+
+export function normalizeToolSelection(input) {
+  if (input === undefined || input === null || input.trim() === "") return null;
+  if (input.trim().toLowerCase() === "all") return null;
+
+  const tools = [
+    ...new Set(
+      input
+        .split(",")
+        .map((value) => value.trim())
+        .filter(Boolean),
+    ),
+  ];
+  if (tools.length === 0) return null;
+  if (tools.some((tool) => !/^[A-Za-z0-9_-]+$/.test(tool))) {
+    throw new Error("UPSTREAM_TOOLS 只能包含逗号分隔的工具名。");
+  }
+  return tools.join(",");
+}
+
+export function parseSetupOptions(rawArgs) {
+  const options = {
+    help: false,
+    rotate: false,
+    tools: undefined,
+  };
+
+  for (let index = 0; index < rawArgs.length; index += 1) {
+    const value = rawArgs[index];
+    if (value === "--help" || value === "-h") {
+      options.help = true;
+      continue;
+    }
+    if (value === "--rotate") {
+      options.rotate = true;
+      continue;
+    }
+    if (value === "--tools" || value.startsWith("--tools=")) {
+      if (options.tools !== undefined) {
+        throw new Error("--tools 只能指定一次。");
+      }
+      const inline = value.startsWith("--tools=");
+      const selected = inline ? value.slice("--tools=".length) : rawArgs[index + 1];
+      if (
+        selected === undefined ||
+        selected.trim() === "" ||
+        (!inline && selected.startsWith("--"))
+      ) {
+        throw new Error("--tools 缺少参数值。使用 --tools all 或逗号分隔的工具名。");
+      }
+      options.tools = selected;
+      if (!inline) index += 1;
+      continue;
+    }
+    throw new Error(`未知参数：${value}。运行 gemini-github-mcp setup --help 查看用法。`);
+  }
+
+  return options;
+}

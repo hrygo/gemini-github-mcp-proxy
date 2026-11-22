@@ -12,9 +12,11 @@ function help() {
 Gemini GitHub MCP Proxy
 
 用法：
-  gemini-github-mcp setup              首次部署或轮换 Secrets
-  gemini-github-mcp setup --rotate     强制轮换并重新部署
-  gemini-github-mcp verify             验收当前部署
+  gemini-github-mcp setup                         首次部署，默认开放全部 GitHub MCP 工具
+  gemini-github-mcp setup --tools all             显式选择全部工具
+  gemini-github-mcp setup --tools tool_a,tool_b   只暴露指定工具
+  gemini-github-mcp setup --rotate                轮换 Secrets 并重新部署
+  gemini-github-mcp verify                        验收当前部署
   gemini-github-mcp verify --url https://<worker>.workers.dev
 
 从 GitHub 安装：

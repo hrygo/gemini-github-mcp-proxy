@@ -10,6 +10,9 @@ import {
   configPath,
   findWorkersDevUrl,
   normalizeBaseUrl,
+  normalizeToolSelection,
+  parseSetupOptions,
+  readConfig,
   writeConfig,
 } from "./lib.mjs";
 import { verifyDeployment } from "./verify.mjs";
@@ -22,17 +25,18 @@ const wranglerBin = join(
   dirname(wranglerPackagePath),
   wranglerPackage.bin.wrangler,
 );
-const args = new Set(process.argv.slice(2));
-const rotate = args.has("--rotate");
-const help = args.has("--help") || args.has("-h");
+const rawArgs = process.argv.slice(2);
 
 function printHelp() {
   console.log(`
 Gemini GitHub MCP Proxy 一键部署
 
 用法：
-  gemini-github-mcp setup              首次部署
-  gemini-github-mcp setup --rotate     轮换全部 Secret 并重新部署
+  gemini-github-mcp setup                          首次部署，默认开放全部 GitHub MCP 工具
+  gemini-github-mcp setup --tools all              显式选择全部工具
+  gemini-github-mcp setup --tools get_file_contents,delete_file
+                                                    只暴露指定工具
+  gemini-github-mcp setup --rotate                 轮换全部 Secret 并重新部署
 
 安装方式：
   npm install --global https://github.com/hrygo/gemini-github-mcp-proxy/releases/latest/download/gemini-github-mcp-proxy.tgz
@@ -42,11 +46,14 @@ Gemini GitHub MCP Proxy 一键部署
   2. 已执行 npx wrangler login
   3. 准备一个 fine-grained GitHub PAT
 
-PAT 最小权限：
+GitHub PAT 的仓库范围和权限由使用者决定。常见开发起点：
   Metadata: Read
   Contents: Read and write
   Issues: Read and write
   Pull requests: Read and write
+
+需要 Actions、Workflows、Secrets、Administration 或其他能力时，
+按实际要使用的 GitHub MCP 工具添加对应 PAT 权限。
 `);
 }
 
@@ -232,7 +239,9 @@ async function verifyWithRetry(workerUrl) {
 }
 
 async function main() {
-  if (help) return printHelp();
+  const options = parseSetupOptions(rawArgs);
+  if (options.help) return printHelp();
+  const rotate = options.rotate;
   console.log("\nGemini GitHub MCP Proxy 一键部署\n");
 
   const packageJson = JSON.parse(
@@ -275,9 +284,20 @@ async function main() {
 
   const adminPin = generatePin();
   const signingSecret = randomBytes(48).toString("hex");
+  const previousConfig = await readConfig();
+  const requestedTools =
+    options.tools ?? process.env.UPSTREAM_TOOLS ??
+    previousConfig?.upstreamTools;
+  const upstreamTools = normalizeToolSelection(
+    typeof requestedTools === "string" ? requestedTools : undefined,
+  );
 
   console.log("正在部署 Worker...");
-  const deployment = await runWrangler(["deploy"], { stream: true });
+  const deployArgs = ["deploy"];
+  if (upstreamTools) {
+    deployArgs.push("--var", `UPSTREAM_TOOLS:${upstreamTools}`);
+  }
+  const deployment = await runWrangler(deployArgs, { stream: true });
   const deployedUrl = findWorkersDevUrl(`${deployment.stdout}\n${deployment.stderr}`);
   if (!deployedUrl) {
     throw new Error("部署成功，但无法从 wrangler 输出识别 workers.dev 地址。");
@@ -299,6 +319,7 @@ async function main() {
     workerUrl,
     mcpUrl: verification.mcpUrl,
     workerName: packageJson.name,
+    upstreamTools: upstreamTools ?? "all",
     configuredAt: new Date().toISOString(),
   });
 
@@ -308,6 +329,7 @@ async function main() {
 Connector 名称：GitHub Dev MCP
 MCP URL：${verification.mcpUrl}
 授权 PIN：${adminPin}
+GitHub MCP 工具范围：${upstreamTools ?? "全部（默认透传）"}
 
 授权 PIN 只在这里显示一次。请立即复制；遗失后运行：
   gemini-github-mcp setup --rotate

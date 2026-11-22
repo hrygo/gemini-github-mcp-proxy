@@ -43,10 +43,39 @@ npm install --global \
 
 - Token 是否过期或被撤销
 - 是否选择了目标仓库
-- Contents、Issues、Pull requests 是否具有读写权限
+- 当前任务需要的资源权限是否已授予
 - 组织仓库是否等待管理员批准 fine-grained token
 
-不要为了“先跑通”直接换成全账号、全权限 classic PAT。
+PAT 的范围由你决定。需要 Actions、Workflows、Administration、Secrets 等能力时，添加对应权限；工具不会在 Worker 层替你扩大或缩小 PAT 权限。
+
+## GitHub 返回 403
+
+通常表示 PAT 缺少当前工具需要的权限。按操作检查：
+
+- 读写文件或 commit：Contents
+- 修改 workflow 文件：Contents + Workflows
+- Issue：Issues
+- PR 与审阅：Pull requests
+- Actions：Actions
+- 仓库管理：Administration 或相应组织权限
+
+是否授予这些权限由你决定，不需要为了使用本工具统一开放更大权限。
+
+## 工具太多、选择不准或超过模型上下文
+
+默认会透传 GitHub Remote MCP 的全部工具，这是为了不替用户删减能力。需要更小的工具面时可显式指定：
+
+```bash
+gemini-github-mcp setup --tools get_file_contents,pull_request_read,issue_read
+```
+
+恢复全部工具：
+
+```bash
+gemini-github-mcp setup --tools all
+```
+
+`--tools` 会通过 GitHub Remote MCP 的 `X-MCP-Tools` 头生效；工具名拼写错误时，上游可能返回空集合或错误。
 
 ## Gemini 显示 Connector 已连接，但模型说工具不可用
 
@@ -67,6 +96,8 @@ npm install --global \
 2. 是否运行过 `gemini-github-mcp setup --rotate`；轮换后旧 PIN 和旧令牌全部失效。
 3. Worker 日志中是否有 `/authorize` 400，通常是回调前缀不匹配。
 4. 是否在 Gemini 中重新添加了 Connector。
+
+如果授权页返回 `429 Too many authorization attempts`，说明同一来源一分钟内提交 PIN 超过 10 次。等待 60 秒后重试；不要连续脚本化尝试。
 
 ## MCP 返回 401
 

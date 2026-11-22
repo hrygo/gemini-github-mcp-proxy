@@ -25,13 +25,17 @@ https://github.com/hrygo/gemini-github-mcp-proxy/releases/latest/download/instal
 
 ```bash
 npm run check
+npm audit --audit-level=high
+npm audit signatures
 git status --short
 ```
 
-更新版本并创建 tag：
+按变更性质更新版本并创建 tag：
 
 ```bash
-npm version patch
+npm version patch   # 缺陷修复
+# 或
+npm version minor   # 向后兼容的新行为或能力
 git push origin main
 git push origin "v$(node -p "require('./package.json').version")"
 ```
@@ -39,7 +43,7 @@ git push origin "v$(node -p "require('./package.json').version")"
 tag 推送成功后，`.github/workflows/release.yml` 会：
 
 1. 检查 tag 与 `package.json` 版本完全一致。
-2. 运行测试、类型检查和脚本语法检查。
+2. 运行高危漏洞审计、npm registry 签名审计、测试、类型检查和脚本语法检查。
 3. 构建稳定命名的 `.tgz` 与 `SHA256SUMS`。
 4. 在临时目录从制品执行全局安装和 CLI 版本验收。
 5. 创建 GitHub Release，或向已有 Release 覆盖上传同版本制品。

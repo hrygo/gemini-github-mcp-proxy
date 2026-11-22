@@ -5,6 +5,9 @@ interface Env {
   UPSTREAM_MCP_URL?: string;
   UPSTREAM_TOOLS?: string;
   ALLOWED_REDIRECT_PREFIX?: string;
+  AUTHORIZE_RATE_LIMITER?: {
+    limit(options: { key: string }): Promise<{ success: boolean }>;
+  };
 }
 
 type TokenPayload = {
@@ -24,36 +27,9 @@ const DEFAULT_SCOPE = "repo read:org gist project issues pull_requests";
 const DEFAULT_REDIRECT_PREFIX =
   "https://oauth-redirect.googleusercontent.com/r/user_bound_custom-mcp-";
 const DEFAULT_UPSTREAM_MCP_URL = "https://api.githubcopilot.com/mcp/";
-export const DEFAULT_UPSTREAM_TOOLS = [
-  "add_comment_to_pending_review",
-  "add_issue_comment",
-  "add_reply_to_pull_request_comment",
-  "create_branch",
-  "create_or_update_file",
-  "create_pull_request",
-  "get_commit",
-  "get_file_contents",
-  "get_me",
-  "issue_read",
-  "issue_write",
-  "list_branches",
-  "list_commits",
-  "list_issues",
-  "list_pull_requests",
-  "pull_request_read",
-  "pull_request_review_write",
-  "push_files",
-  "search_code",
-  "search_commits",
-  "search_issues",
-  "search_pull_requests",
-  "search_repositories",
-  "update_issue_comment",
-  "update_pull_request",
-  "update_pull_request_branch",
-].join(",");
 const AUTH_CODE_TTL_SECONDS = 600;
 const TOKEN_TTL_SECONDS = 315_360_000;
+const AUTHORIZE_RATE_LIMIT_PERIOD_SECONDS = 60;
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 
@@ -321,6 +297,42 @@ function hasValidPkce(params: URLSearchParams): boolean {
   return method === "S256" && /^[A-Za-z0-9_-]{43,128}$/.test(challenge);
 }
 
+async function enforceAuthorizeRateLimit(
+  request: Request,
+  env: Env,
+): Promise<Response | null> {
+  if (!env.AUTHORIZE_RATE_LIMITER) return null;
+
+  const clientIp =
+    request.headers.get("cf-connecting-ip")?.trim() || "unknown";
+  try {
+    const outcome = await env.AUTHORIZE_RATE_LIMITER.limit({
+      key: `${clientIp}:authorize`,
+    });
+    if (outcome.success) return null;
+  } catch (error) {
+    console.error("Authorize rate limiter failed", error);
+    return new Response("Authorization temporarily unavailable", {
+      status: 503,
+      headers: {
+        "cache-control": "no-store",
+        "content-type": "text/plain; charset=utf-8",
+        "x-content-type-options": "nosniff",
+      },
+    });
+  }
+
+  return new Response("Too many authorization attempts. Try again later.", {
+    status: 429,
+    headers: {
+      "cache-control": "no-store",
+      "content-type": "text/plain; charset=utf-8",
+      "retry-after": String(AUTHORIZE_RATE_LIMIT_PERIOD_SECONDS),
+      "x-content-type-options": "nosniff",
+    },
+  });
+}
+
 function authorizationPage(params: URLSearchParams, error = ""): string {
   const values = {
     client_id: params.get("client_id") ?? "",
@@ -472,6 +484,15 @@ async function authorizeRequest(request: Request, env: Env): Promise<Response> {
       },
     });
   }
+  if (request.method !== "POST") {
+    return new Response("Method Not Allowed", {
+      status: 405,
+      headers: { allow: "GET, POST" },
+    });
+  }
+
+  const rateLimited = await enforceAuthorizeRateLimit(request, env);
+  if (rateLimited) return rateLimited;
 
   const formData = await request.formData();
   for (const [key, value] of formData.entries()) {
@@ -671,7 +692,8 @@ async function proxyMcp(request: Request, env: Env): Promise<Response> {
 
   const upstreamUrl = env.UPSTREAM_MCP_URL || DEFAULT_UPSTREAM_MCP_URL;
   const upstreamHeaders = new Headers({ authorization: `Bearer ${env.GITHUB_PAT}` });
-  upstreamHeaders.set("x-mcp-tools", env.UPSTREAM_TOOLS || DEFAULT_UPSTREAM_TOOLS);
+  const configuredTools = env.UPSTREAM_TOOLS?.trim();
+  if (configuredTools) upstreamHeaders.set("x-mcp-tools", configuredTools);
   for (const name of FORWARDED_REQUEST_HEADERS) {
     const value = request.headers.get(name);
     if (value) upstreamHeaders.set(name, value);
