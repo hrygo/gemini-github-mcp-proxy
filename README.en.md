@@ -44,15 +44,13 @@ All upstream GitHub MCP tools are available by default. The GitHub PAT defines r
 
 ## Architecture
 
-```mermaid
-flowchart LR
-    GW[Gemini Web] --> C[Shared Connector]
-    GA[Gemini App\niOS / Android] --> C
-    C -->|OAuth 2.1 + S256 PKCE| W[Cloudflare Worker]
-    W -->|GitHub PAT| M[GitHub Remote MCP]
-    M --> A[GitHub API]
-    A --> R[Code / Branches / Commits / PR / Issues / Actions]
-```
+### Shared entry points
+
+![Gemini Web and Gemini App share a connector to GitHub Remote MCP through a Cloudflare Worker](assets/architecture.svg)
+
+### Development loop
+
+![Gemini moves from read and plan to branch edits, a Draft PR, CI and code-agent verification, then review and merge](assets/workflow.svg)
 
 The Worker supplies the OAuth/DCR and refresh compatibility Gemini needs, keeps the PAT outside Gemini, and converts GitHub text `EmbeddedResource` blocks into content Gemini can read.
 

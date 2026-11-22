@@ -44,23 +44,13 @@ Antigravity 与 Gemini App 是互补关系：前者提供完整的本地开发�
 
 ## 工作流程
 
-```mermaid
-flowchart LR
-    GW[Gemini Web] --> C[同一个 Connector]
-    GA[Gemini App\niOS / Android] --> C
-    C -->|OAuth 2.1 + S256 PKCE| W[Cloudflare Worker]
-    W -->|GitHub PAT| M[GitHub Remote MCP]
-    M --> A[GitHub API]
-    A --> R[Code / Branches / Commits / PR / Issues / Actions]
-```
+### 双端接入
 
-```mermaid
-flowchart LR
-    T[Gemini 读取与规划] --> B[创建分支并修改代码]
-    B --> PR[提交 commit 与 Draft PR]
-    PR --> CI[GitHub Actions / Codex / 其他 code agent]
-    CI --> V[验证、修复、审阅与合并]
-```
+![Gemini Web 与 Gemini App 共享 Connector，经由 Cloudflare Worker 接入 GitHub Remote MCP](assets/architecture.svg)
+
+### 开发闭环
+
+![Gemini 从读取规划到创建分支、提交 Draft PR，再由 CI 与 code agent 验证并完成合并](assets/workflow.svg)
 
 Cloudflare Worker 负责三件事：补齐 Gemini 所需的 OAuth/DCR 与 refresh 兼容、把 PAT 隔离在 GitHub 之外、将 GitHub 返回的文本 `EmbeddedResource` 转成 Gemini 可读的文本内容。
 
