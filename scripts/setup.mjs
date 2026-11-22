@@ -34,8 +34,8 @@ Gemini GitHub MCP Proxy 一键部署
   gemini-github-mcp setup              首次部署
   gemini-github-mcp setup --rotate     轮换全部 Secret 并重新部署
 
-也可通过 npx：
-  npx gemini-github-mcp-proxy setup
+安装方式：
+  npm install --global https://github.com/hrygo/gemini-github-mcp-proxy/releases/latest/download/gemini-github-mcp-proxy.tgz
 
 部署前：
   1. Node.js 22+
@@ -310,7 +310,7 @@ MCP URL：${verification.mcpUrl}
 授权 PIN：${adminPin}
 
 授权 PIN 只在这里显示一次。请立即复制；遗失后运行：
-  npx gemini-github-mcp-proxy setup --rotate
+  gemini-github-mcp setup --rotate
 
 下一步：
 1. 打开 Gemini Web → 设置 → 已连接的应用

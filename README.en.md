@@ -6,6 +6,29 @@ Deploy **one Worker per person**, with that person's own GitHub PAT. Do not shar
 
 ## Quick start
 
+Install from the fixed GitHub Release asset. No npm account is required:
+
+**macOS / Linux**
+
+```bash
+curl -fsSL https://github.com/hrygo/gemini-github-mcp-proxy/releases/latest/download/install.sh | sh
+```
+
+**Windows PowerShell**
+
+```powershell
+irm https://github.com/hrygo/gemini-github-mcp-proxy/releases/latest/download/install.ps1 | iex
+```
+
+Or download `gemini-github-mcp-proxy.tgz` and install it manually:
+
+```bash
+npm install --global \
+  https://github.com/hrygo/gemini-github-mcp-proxy/releases/latest/download/gemini-github-mcp-proxy.tgz
+```
+
+The package dependencies still come from the public npm Registry. The tool itself does not need an npm account or an npm-published package.
+
 Requirements:
 
 - Node.js 22+
@@ -18,13 +41,6 @@ Requirements:
 
 ```bash
 npx wrangler login
-npx gemini-github-mcp-proxy setup
-```
-
-Or install globally:
-
-```bash
-npm install --global gemini-github-mcp-proxy
 gemini-github-mcp setup
 ```
 
@@ -65,20 +81,21 @@ See [SECURITY.md](SECURITY.md) for the threat model and rotation procedure.
 ## Commands
 
 ```bash
-npx gemini-github-mcp-proxy setup            # first deployment
-npx gemini-github-mcp-proxy setup --rotate   # rotate all secrets
-npx gemini-github-mcp-proxy verify           # verify deployed endpoints
+gemini-github-mcp setup            # first deployment
+gemini-github-mcp setup --rotate   # rotate all secrets
+gemini-github-mcp verify           # verify deployed endpoints
 npm run check                                # source development checks
 npm run deploy                               # redeploy current source only
 ```
 
 ## Sharing
 
-Friends install directly from npm and run setup in their own Cloudflare and GitHub account:
+Share the [latest GitHub Release](https://github.com/hrygo/gemini-github-mcp-proxy/releases/latest). Friends do not need an npm account:
 
 ```bash
+curl -fsSL https://github.com/hrygo/gemini-github-mcp-proxy/releases/latest/download/install.sh | sh
 npx wrangler login
-npx gemini-github-mcp-proxy setup
+gemini-github-mcp setup
 ```
 
 Never share a GitHub PAT, Cloudflare Secret, authorization PIN, or an already-authorized Worker URL unless you intend to grant access to your GitHub identity.

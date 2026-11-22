@@ -3,17 +3,17 @@
 先运行：
 
 ```bash
-npx gemini-github-mcp-proxy verify
+gemini-github-mcp verify
 npx wrangler deployments status
 ```
 
-`npx gemini-github-mcp-proxy verify` 会检查健康状态、OAuth metadata、动态客户端注册和 `/mcp` 的未认证保护。
+`gemini-github-mcp verify` 会检查健康状态、OAuth metadata、动态客户端注册和 `/mcp` 的未认证保护。
 
-## `npx gemini-github-mcp-proxy setup` 提示 Cloudflare 未登录
+## `gemini-github-mcp setup` 提示 Cloudflare 未登录
 
 ```bash
 npx wrangler login
-npx gemini-github-mcp-proxy setup
+gemini-github-mcp setup
 ```
 
 如果浏览器无法完成登录，改用 Cloudflare API Token，并确保账号拥有 Workers Scripts 编辑权限。
@@ -22,13 +22,14 @@ npx gemini-github-mcp-proxy setup
 
 ```bash
 export CLOUDFLARE_ACCOUNT_ID=<account-id>
-npx gemini-github-mcp-proxy setup
+gemini-github-mcp setup
 ```
 
-npm 12 在全局安装时可能提示 `install-scripts` 被阻止。Wrangler 的预编译制品通常仍可运行；需要显式放行时可执行：
+从 GitHub Release 安装后如果 npm 提示 `install-scripts` 被阻止，可重新安装并显式放行 Wrangler 的已知构建依赖：
 
 ```bash
-npm install --global gemini-github-mcp-proxy \
+npm install --global \
+  https://github.com/hrygo/gemini-github-mcp-proxy/releases/latest/download/gemini-github-mcp-proxy.tgz \
   --allow-scripts=esbuild,fsevents,workerd
 ```
 
@@ -63,7 +64,7 @@ npm install --global gemini-github-mcp-proxy \
 检查：
 
 1. 是否输入了 setup 最后输出的 12 位 PIN。
-2. 是否运行过 `npx gemini-github-mcp-proxy setup --rotate`；轮换后旧 PIN 和旧令牌全部失效。
+2. 是否运行过 `gemini-github-mcp setup --rotate`；轮换后旧 PIN 和旧令牌全部失效。
 3. Worker 日志中是否有 `/authorize` 400，通常是回调前缀不匹配。
 4. 是否在 Gemini 中重新添加了 Connector。
 
@@ -82,9 +83,9 @@ npm install --global gemini-github-mcp-proxy \
 确认部署的是当前版本：
 
 ```bash
-npm install --global gemini-github-mcp-proxy@latest
-npx gemini-github-mcp-proxy setup --rotate
-npx gemini-github-mcp-proxy verify
+curl -fsSL https://github.com/hrygo/gemini-github-mcp-proxy/releases/latest/download/install.sh | sh
+gemini-github-mcp setup --rotate
+gemini-github-mcp verify
 ```
 
 Worker 必须把 JSON 和 SSE 中的文本 `resource` 提升为普通 `text`。若仍只有状态行，查看 Cloudflare Worker Logs，确认上游响应类型和代理版本。
@@ -111,8 +112,8 @@ curl -H "Authorization: Bearer <PAT>" \
 ## 如何安全重来
 
 ```bash
-npx gemini-github-mcp-proxy setup --rotate
-npx gemini-github-mcp-proxy verify
+gemini-github-mcp setup --rotate
+gemini-github-mcp verify
 ```
 
 然后在 Gemini 中删除并重新添加 `GitHub Dev MCP`。旧令牌会因 `SIGNING_SECRET` 轮换而失效。

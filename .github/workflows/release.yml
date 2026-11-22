@@ -1,0 +1,62 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm install --global npm@12.2.3
+      - run: npm ci
+      - run: npm run check
+      - name: Verify tag matches package version
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          test "v${version}" = "${GITHUB_REF_NAME}"
+      - name: Build release assets
+        run: npm run pack:release
+      - run: sh -n dist/install.sh
+      - run: (cd dist && sha256sum -c SHA256SUMS)
+      - name: Smoke-test release archive
+        run: |
+          prefix="${RUNNER_TEMP}/gemini-github-mcp-install"
+          npm install --global --prefix "$prefix" "${GITHUB_WORKSPACE}/dist/gemini-github-mcp-proxy.tgz"
+          test "$("${prefix}/bin/gemini-github-mcp" --version)" = "$(node -p "require('./package.json').version")"
+          test -s dist/gemini-github-mcp-proxy.tgz
+          test -s dist/SHA256SUMS
+          test -s dist/install.sh
+          test -s dist/install.ps1
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          assets=(
+            dist/gemini-github-mcp-proxy.tgz
+            dist/SHA256SUMS
+            dist/install.sh
+            dist/install.ps1
+          )
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" "${assets[@]}" --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" "${assets[@]}" \
+              --verify-tag \
+              --generate-notes \
+              --title "$GITHUB_REF_NAME"
+          fi

@@ -304,13 +304,21 @@ function isAllowedRedirect(env: Env, redirectUri: string): boolean {
   try {
     const url = new URL(redirectUri);
     const prefix = env.ALLOWED_REDIRECT_PREFIX || DEFAULT_REDIRECT_PREFIX;
+    if (url.protocol !== "https:" || prefix === "") return false;
+    const allowed = new URL(prefix);
     return (
-      url.protocol === "https:" &&
-      `${url.origin}${url.pathname}`.startsWith(prefix)
+      url.origin === allowed.origin &&
+      url.pathname.startsWith(allowed.pathname)
     );
   } catch {
     return false;
   }
+}
+
+function hasValidPkce(params: URLSearchParams): boolean {
+  const challenge = params.get("code_challenge") ?? "";
+  const method = params.get("code_challenge_method") ?? "";
+  return method === "S256" && /^[A-Za-z0-9_-]{43,128}$/.test(challenge);
 }
 
 function authorizationPage(params: URLSearchParams, error = ""): string {
@@ -381,17 +389,9 @@ function metadataResponse(request: Request): Response {
     token_endpoint: `${baseUrl}/token`,
     registration_endpoint: `${baseUrl}/register`,
     response_types_supported: ["code"],
-    grant_types_supported: [
-      "authorization_code",
-      "refresh_token",
-      "client_credentials",
-    ],
-    token_endpoint_auth_methods_supported: [
-      "none",
-      "client_secret_post",
-      "client_secret_basic",
-    ],
-    code_challenge_methods_supported: ["S256", "plain"],
+    grant_types_supported: ["authorization_code", "refresh_token"],
+    token_endpoint_auth_methods_supported: ["none"],
+    code_challenge_methods_supported: ["S256"],
   });
 }
 
@@ -420,23 +420,31 @@ async function parseBody(request: Request): Promise<Record<string, string>> {
   return result;
 }
 
-async function registerClient(request: Request): Promise<Response> {
+async function registerClient(request: Request, env: Env): Promise<Response> {
   const body = await request
     .json<Record<string, unknown>>()
     .catch(() => ({} as Record<string, unknown>));
   const redirectUris = Array.isArray(body.redirect_uris) ? body.redirect_uris : [];
+  const validRedirectUris = redirectUris.every(
+    (value) => typeof value === "string" && isAllowedRedirect(env, value),
+  );
+  if (redirectUris.length === 0 || !validRedirectUris) {
+    return json(
+      {
+        error: "invalid_client_metadata",
+        error_description: "redirect_uris must contain allowed Gemini callbacks",
+      },
+      { status: 400 },
+    );
+  }
   return json(
     {
       client_id: `mcp-client-${crypto.randomUUID()}`,
-      client_secret: crypto.randomUUID().replaceAll("-", ""),
       client_id_issued_at: Math.floor(Date.now() / 1000),
-      client_secret_expires_at: 0,
       redirect_uris: redirectUris,
-      grant_types:
-        body.grant_types ?? ["authorization_code", "refresh_token"],
-      response_types: body.response_types ?? ["code"],
-      token_endpoint_auth_method:
-        body.token_endpoint_auth_method ?? "client_secret_post",
+      grant_types: ["authorization_code", "refresh_token"],
+      response_types: ["code"],
+      token_endpoint_auth_method: "none",
       ...(typeof body.client_name === "string"
         ? { client_name: body.client_name }
         : {}),
@@ -451,6 +459,11 @@ async function authorizeRequest(request: Request, env: Env): Promise<Response> {
     const redirectUri = params.get("redirect_uri") ?? "";
     if (!isAllowedRedirect(env, redirectUri)) {
       return new Response("Unsupported redirect_uri", { status: 400 });
+    }
+    if (!hasValidPkce(params)) {
+      return new Response("PKCE S256 code_challenge is required", {
+        status: 400,
+      });
     }
     return new Response(authorizationPage(params), {
       headers: {
@@ -469,6 +482,11 @@ async function authorizeRequest(request: Request, env: Env): Promise<Response> {
   if (!isAllowedRedirect(env, redirectUri)) {
     return new Response("Unsupported redirect_uri", { status: 400 });
   }
+  if (!hasValidPkce(params)) {
+    return new Response("PKCE S256 code_challenge is required", {
+      status: 400,
+    });
+  }
   if (!(await safelyEqual(pin, env.ADMIN_PIN))) {
     return new Response(authorizationPage(params, "授权 PIN 不正确。"), {
       status: 401,
@@ -486,8 +504,8 @@ async function authorizeRequest(request: Request, env: Env): Promise<Response> {
       typ: "auth_code",
       client_id: params.get("client_id") ?? "gemini",
       redirect_uri: redirectUri,
-      code_challenge: params.get("code_challenge") ?? "",
-      code_challenge_method: params.get("code_challenge_method") ?? "S256",
+      code_challenge: params.get("code_challenge")!,
+      code_challenge_method: "S256",
       scope: params.get("scope") || DEFAULT_SCOPE,
     },
     AUTH_CODE_TTL_SECONDS,
@@ -517,22 +535,29 @@ async function tokenRequest(request: Request, env: Env): Promise<Response> {
     }
     try {
       const claims = await verifySignedToken(env, body.code, "auth_code");
+      if (
+        body.client_id &&
+        claims.client_id &&
+        body.client_id !== claims.client_id
+      ) {
+        throw new Error("Authorization code was issued to another client");
+      }
       clientId = claims.client_id || clientId;
       scope = claims.scope || scope;
-      if (claims.code_challenge) {
-        const verifier = body.code_verifier || "";
-        const method = (claims.code_challenge_method || "S256").toUpperCase();
-        const challenge =
-          method === "PLAIN" ? verifier : await sha256(verifier);
-        if (!verifier || !(await safelyEqual(challenge, claims.code_challenge))) {
-          return json(
-            {
-              error: "invalid_grant",
-              error_description: "PKCE verification failed",
-            },
-            { status: 400, headers: noStore },
-          );
-        }
+      const verifier = body.code_verifier || "";
+      if (
+        !claims.code_challenge ||
+        claims.code_challenge_method !== "S256" ||
+        !verifier ||
+        !(await safelyEqual(await sha256(verifier), claims.code_challenge))
+      ) {
+        return json(
+          {
+            error: "invalid_grant",
+            error_description: "PKCE verification failed",
+          },
+          { status: 400, headers: noStore },
+        );
       }
     } catch (error) {
       return json(
@@ -556,6 +581,13 @@ async function tokenRequest(request: Request, env: Env): Promise<Response> {
     }
     try {
       const claims = await verifySignedToken(env, body.refresh_token, "refresh");
+      if (
+        body.client_id &&
+        claims.client_id &&
+        body.client_id !== claims.client_id
+      ) {
+        throw new Error("Refresh token was issued to another client");
+      }
       clientId = claims.client_id || clientId;
       scope = claims.scope || scope;
     } catch (error) {
@@ -566,13 +598,6 @@ async function tokenRequest(request: Request, env: Env): Promise<Response> {
             error instanceof Error ? error.message : "Invalid refresh token",
         },
         { status: 400, headers: noStore },
-      );
-    }
-  } else if (body.grant_type === "client_credentials") {
-    if (!(await safelyEqual(body.client_secret || "", env.ADMIN_PIN))) {
-      return json(
-        { error: "invalid_client", error_description: "Invalid client secret" },
-        { status: 401, headers: noStore },
       );
     }
   } else {
@@ -715,7 +740,7 @@ export default {
         return withCors(metadataResponse(request));
       }
       if (url.pathname === "/register" && request.method === "POST") {
-        return withCors(await registerClient(request));
+        return withCors(await registerClient(request, env));
       }
       if (url.pathname === "/authorize") {
         return authorizeRequest(request, env);

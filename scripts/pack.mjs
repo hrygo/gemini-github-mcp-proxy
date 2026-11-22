@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { createHash } from "node:crypto";
-import { readFile, mkdir } from "node:fs/promises";
+import { copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import { spawn } from "node:child_process";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 const root = fileURLToPath(new URL("..", import.meta.url));
 const npm = process.platform === "win32" ? "npm.cmd" : "npm";
 const destination = join(root, "dist");
+const stableName = "gemini-github-mcp-proxy.tgz";
 
 function run() {
   return new Promise((resolve, reject) => {
@@ -38,22 +39,33 @@ async function main() {
   const parsed = JSON.parse(output.trim());
   const packed = Array.isArray(parsed) ? parsed[0] : Object.values(parsed)[0];
   if (!packed?.filename) throw new Error("无法解析 npm pack 输出。");
-  const path = join(destination, packed.filename);
+
+  const versionedPath = join(destination, packed.filename);
+  const stablePath = join(destination, stableName);
+  await copyFile(versionedPath, stablePath);
+  await copyFile(join(root, "install.sh"), join(destination, "install.sh"));
+  await copyFile(join(root, "install.ps1"), join(destination, "install.ps1"));
+
   const digest = createHash("sha256")
-    .update(await readFile(path))
+    .update(await readFile(stablePath))
     .digest("hex");
+  await writeFile(
+    join(destination, "SHA256SUMS"),
+    `${digest}  ${stableName}\n`,
+    "utf8",
+  );
 
   console.log(`
-分享包已生成：
-  ${path}
+GitHub Release 制品已生成：
+  ${stablePath}
+  ${join(destination, "SHA256SUMS")}
 
 SHA-256：
   ${digest}
 
-离线包可通过以下命令部署；在线分享优先推荐 npm：
-  npm install
-  npx wrangler login
-  npm run setup
+安装：
+  npm install --global "${stablePath}"
+  gemini-github-mcp setup
 `);
 }
 

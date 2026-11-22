@@ -1,81 +1,84 @@
 # Releasing
 
-包名：
-
-```text
-gemini-github-mcp-proxy
-```
-
-发布源：
-
-```text
-https://github.com/hrygo/gemini-github-mcp-proxy
-```
-
 ## 发布模型
 
-- `ci.yml`：每次 push / PR 执行测试、类型检查与脚本语法检查。
-- `publish.yml`：GitHub Release 发布后，通过 npm Trusted Publishing 的 OIDC 身份执行 `npm publish`。
-- 工作流不保存长期 `NPM_TOKEN`。
-- npm 自动生成 provenance，将包链接到 GitHub 源码和 workflow。
+本工具通过 GitHub Release 分发，不依赖 npm 账号或 npm 包名：
 
-## 首次建立包名
+- CI 在每个 push / PR 上运行测试。
+- 推送 `v*` tag 后，Release workflow 会再次执行完整检查。
+- Release 制品是固定名称的 `gemini-github-mcp-proxy.tgz`。
+- 同时发布 `SHA256SUMS`、`install.sh` 和 `install.ps1`。
+- 使用者可用 `npm install --global <tgz>` 安装；依赖仍从 npm 公共 Registry 下载。
 
-npm 要求包已存在后才能配置 Trusted Publishing。首次发布需要登录 npm：
+固定下载地址：
 
-```bash
-npm login
-npm publish --access public
+```text
+https://github.com/hrygo/gemini-github-mcp-proxy/releases/latest/download/gemini-github-mcp-proxy.tgz
+https://github.com/hrygo/gemini-github-mcp-proxy/releases/latest/download/SHA256SUMS
+https://github.com/hrygo/gemini-github-mcp-proxy/releases/latest/download/install.sh
+https://github.com/hrygo/gemini-github-mcp-proxy/releases/latest/download/install.ps1
 ```
 
-确认版本可以从 npm 安装：
+## 发布新版本
+
+先确保工作区干净并通过本地检查：
 
 ```bash
-npx gemini-github-mcp-proxy --help
+npm run check
+git status --short
 ```
 
-## 配置 Trusted Publisher
-
-首次发布后，在 npm 包设置中添加 GitHub Actions Trusted Publisher，或使用：
-
-```bash
-npm trust github gemini-github-mcp-proxy \
-  --repo hrygo/gemini-github-mcp-proxy \
-  --file publish.yml \
-  --env npm \
-  --allow-publish \
-  --yes
-```
-
-新配置必须在 48 小时内完成一次成功发布。
-
-建议随后在 npm 包设置中启用发布时 MFA/2FA，并限制长期 token：
-
-```bash
-npm access set mfa=publish gemini-github-mcp-proxy
-```
-
-## 后续版本
+更新版本并创建 tag：
 
 ```bash
 npm version patch
-git push
-gh release create "v$(node -p "require('./package.json').version")" \
-  --generate-notes
+git push origin main
+git push origin "v$(node -p "require('./package.json').version")"
 ```
 
-GitHub Release 发布后，`publish.yml` 会：
+tag 推送成功后，`.github/workflows/release.yml` 会：
 
-1. 检查 tag 与 `package.json` 版本一致。
-2. 运行完整 CI。
-3. 使用 OIDC Trusted Publishing 执行 `npm publish`。
+1. 检查 tag 与 `package.json` 版本完全一致。
+2. 运行测试、类型检查和脚本语法检查。
+3. 构建稳定命名的 `.tgz` 与 `SHA256SUMS`。
+4. 在临时目录从制品执行全局安装和 CLI 版本验收。
+5. 创建 GitHub Release，或向已有 Release 覆盖上传同版本制品。
+
+## 本地验证制品
+
+```bash
+npm run pack:release
+sh -n install.sh
+npm install --global --prefix /tmp/gemini-github-mcp-install dist/gemini-github-mcp-proxy.tgz
+/tmp/gemini-github-mcp-install/bin/gemini-github-mcp --version
+(cd dist && shasum -a 256 -c SHA256SUMS)
+```
+
+检查 npm 包内容，确保测试和发布脚本不进入制品：
+
+```bash
+npm pack --dry-run --json
+```
+
+## 发布后验收
+
+```bash
+curl -fsSL \
+  https://github.com/hrygo/gemini-github-mcp-proxy/releases/latest/download/SHA256SUMS \
+  -o /tmp/SHA256SUMS
+curl -fsSL \
+  https://github.com/hrygo/gemini-github-mcp-proxy/releases/latest/download/gemini-github-mcp-proxy.tgz \
+  -o /tmp/gemini-github-mcp-proxy.tgz
+cd /tmp
+shasum -a 256 -c SHA256SUMS
+```
+
+再在全新环境执行 `install.sh`，确认 `gemini-github-mcp --version` 正常。
 
 ## 回退
 
-npm 版本不可覆盖。发现问题时发布修复版本，例如：
+Release tag 与制品不可变地表达一个版本。发现问题时：
 
-```bash
-npm version patch
-```
-
-需要紧急隐藏错误版本时使用 npm 的 unpublish/deprecate 策略，但不要删除仍被用户锁定的版本。
+1. 保留失败版本的 Release 供追溯，或将其标记为 Pre-release。
+2. 修复后发布新的 patch 版本。
+3. 不要用同名 tag 强推覆盖旧制品。

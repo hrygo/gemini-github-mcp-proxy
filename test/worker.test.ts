@@ -40,6 +40,9 @@ describe("Gemini GitHub MCP proxy", () => {
       authorization_endpoint: "https://proxy.example/authorize",
       token_endpoint: "https://proxy.example/token",
       registration_endpoint: "https://proxy.example/register",
+      grant_types_supported: ["authorization_code", "refresh_token"],
+      token_endpoint_auth_methods_supported: ["none"],
+      code_challenge_methods_supported: ["S256"],
     });
   });
 
@@ -49,14 +52,18 @@ describe("Gemini GitHub MCP proxy", () => {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         client_name: "Gemini",
-        redirect_uris: ["https://oauth-redirect.googleusercontent.com/r/test"],
+        redirect_uris: [
+          "https://oauth-redirect.googleusercontent.com/r/user_bound_custom-mcp-test",
+        ],
       }),
     });
     expect(response.status).toBe(201);
-    expect(await response.json()).toMatchObject({
+    const registration = (await response.json()) as Record<string, unknown>;
+    expect(registration).toMatchObject({
       client_name: "Gemini",
-      token_endpoint_auth_method: "client_secret_post",
+      token_endpoint_auth_method: "none",
     });
+    expect(registration).not.toHaveProperty("client_secret");
   });
 
   it("rejects unauthenticated MCP requests", async () => {
@@ -138,7 +145,12 @@ describe("Gemini GitHub MCP proxy", () => {
     const badPin = await call("/authorize", {
       method: "POST",
       headers: { "content-type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({ redirect_uri: redirectUri, pin: "000000" }),
+      body: new URLSearchParams({
+        redirect_uri: redirectUri,
+        code_challenge: "A".repeat(43),
+        code_challenge_method: "S256",
+        pin: "000000",
+      }),
     });
     expect(badPin.status).toBe(401);
 
@@ -148,11 +160,54 @@ describe("Gemini GitHub MCP proxy", () => {
     expect(badRedirect.status).toBe(400);
   });
 
+  it("requires S256 PKCE and rejects unsupported client credentials", async () => {
+    const redirectUri =
+      "https://oauth-redirect.googleusercontent.com/r/user_bound_custom-mcp-test";
+    const missingPkce = await call(
+      `/authorize?client_id=mcp-client-test&redirect_uri=${encodeURIComponent(redirectUri)}`,
+    );
+    expect(missingPkce.status).toBe(400);
+
+    const plainPkce = await call(
+      `/authorize?client_id=mcp-client-test&redirect_uri=${encodeURIComponent(redirectUri)}&code_challenge=${"A".repeat(43)}&code_challenge_method=plain`,
+    );
+    expect(plainPkce.status).toBe(400);
+
+    const clientCredentials = await call("/token", {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        grant_type: "client_credentials",
+        client_id: "mcp-client-test",
+        client_secret: env.ADMIN_PIN,
+      }),
+    });
+    expect(clientCredentials.status).toBe(400);
+    expect(await clientCredentials.json()).toMatchObject({
+      error: "unsupported_grant_type",
+    });
+  });
+
+  it("rejects dynamic registration for untrusted callbacks", async () => {
+    const response = await call("/register", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        client_name: "Hostile",
+        redirect_uris: ["https://evil.example/callback"],
+      }),
+    });
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({
+      error: "invalid_client_metadata",
+    });
+  });
+
   it("serves the authorization form with hardened response headers", async () => {
     const redirectUri =
       "https://oauth-redirect.googleusercontent.com/r/user_bound_custom-mcp-test";
     const response = await call(
-      `/authorize?client_id=mcp-client-test&redirect_uri=${encodeURIComponent(redirectUri)}&code_challenge=test&code_challenge_method=S256`,
+      `/authorize?client_id=mcp-client-test&redirect_uri=${encodeURIComponent(redirectUri)}&code_challenge=${"A".repeat(43)}&code_challenge_method=S256`,
     );
     expect(response.status).toBe(200);
     expect(response.headers.get("cache-control")).toBe("no-store");

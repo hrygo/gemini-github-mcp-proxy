@@ -25,17 +25,15 @@
     "gemini-github-mcp": "./scripts/cli.mjs",
     "gemini-github-mcp-proxy": "./scripts/cli.mjs"
   },
-  "publishConfig": {
-    "access": "public",
-    "provenance": true
-  },
   "engines": {
     "node": ">=22"
   },
   "files": [
     "src/",
-    "scripts/",
-    "test/",
+    "scripts/cli.mjs",
+    "scripts/lib.mjs",
+    "scripts/setup.mjs",
+    "scripts/verify.mjs",
     ".gitignore",
     "README.md",
     "README.en.md",
@@ -50,7 +48,8 @@
     "setup": "node scripts/setup.mjs",
     "verify": "node scripts/verify.mjs",
     "check": "npm test && npm run typecheck && node --check scripts/cli.mjs && node --check scripts/setup.mjs && node --check scripts/verify.mjs && node --check scripts/pack.mjs",
-    "pack:share": "node scripts/pack.mjs",
+    "pack:release": "node scripts/pack.mjs",
+    "pack:share": "npm run pack:release",
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
     "test": "vitest run",

@@ -89,7 +89,7 @@ async function main() {
     (await readConfig())?.workerUrl;
   if (!configuredUrl) {
     throw new Error(
-      "缺少部署地址。先运行 npx gemini-github-mcp-proxy setup，或执行 npx gemini-github-mcp-proxy verify --url https://<worker>.<subdomain>.workers.dev",
+      "缺少部署地址。先运行 gemini-github-mcp setup，或执行 gemini-github-mcp verify --url https://<worker>.<subdomain>.workers.dev",
     );
   }
 

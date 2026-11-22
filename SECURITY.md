@@ -62,7 +62,7 @@ setup 生成随机 12 位数字 PIN，只在完成后显示一次。不要把 PI
 遗失 PIN 时：
 
 ```bash
-npx gemini-github-mcp-proxy setup --rotate
+gemini-github-mcp setup --rotate
 ```
 
 这会轮换全部 Secret。回到 Gemini，在 Connected Apps 中删除旧 Connector，再按新 PIN 重新添加。
@@ -79,7 +79,7 @@ npx gemini-github-mcp-proxy setup --rotate
 发生凭据泄露时，应同时：
 
 1. 在 GitHub 撤销 PAT。
-2. 运行 `npx gemini-github-mcp-proxy setup --rotate`。
+2. 运行 `gemini-github-mcp setup --rotate`。
 3. 在 Gemini 删除并重新添加 Connector。
 4. 检查 GitHub 审计日志、分支、commit、Issue 和 PR。
 
@@ -88,6 +88,8 @@ npx gemini-github-mcp-proxy setup --rotate
 - 保持 `workers_dev: true` 并使用 HTTPS。
 - 不要把 Secrets 写入 `.dev.vars`、源码、命令参数或 shell 历史。
 - `ALLOWED_REDIRECT_PREFIX` 默认只接受 Gemini 官方 OAuth 回调前缀。
+- 动态客户端注册只接受该受信回调前缀，并返回公共客户端 `token_endpoint_auth_method: none`。
+- 授权请求必须使用 `S256` PKCE；不支持 `plain` 或缺失 `code_challenge`。
 - 授权页返回 `no-store`、CSP、禁止 iframe 和 no-referrer 响应头。
 - Worker 健康检查只返回配置是否齐全，不返回 Secret。
 

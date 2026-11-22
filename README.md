@@ -19,6 +19,37 @@
 
 ## 快速开始
 
+### 安装
+
+不需要注册 npm 账号。安装包由 GitHub Release 提供：
+
+**macOS / Linux**
+
+```bash
+curl -fsSL https://github.com/hrygo/gemini-github-mcp-proxy/releases/latest/download/install.sh | sh
+```
+
+**Windows PowerShell**
+
+```powershell
+irm https://github.com/hrygo/gemini-github-mcp-proxy/releases/latest/download/install.ps1 | iex
+```
+
+也可以手动下载 Release 中的 `gemini-github-mcp-proxy.tgz`，校验 `SHA256SUMS` 后安装：
+
+```bash
+npm install --global \
+  https://github.com/hrygo/gemini-github-mcp-proxy/releases/latest/download/gemini-github-mcp-proxy.tgz
+```
+
+安装包依赖由 npm 公共 Registry 自动下载，但**不需要 npm 账号，也不需要该工具发布到 npm**。
+
+升级时重新执行上面的安装命令。卸载：
+
+```bash
+npm uninstall --global gemini-github-mcp-proxy
+```
+
 ### 1. 准备
 
 - Node.js 22 或更高版本
@@ -38,13 +69,6 @@
 
 ```bash
 npx wrangler login
-npx gemini-github-mcp-proxy setup
-```
-
-也可全局安装：
-
-```bash
-npm install --global gemini-github-mcp-proxy
 gemini-github-mcp setup
 ```
 
@@ -111,9 +135,9 @@ Gemini 没有本地 shell 和文件系统；提交后可让 GitHub Actions、Cod
 ## 常用命令
 
 ```bash
-npx gemini-github-mcp-proxy setup            # 首次部署
-npx gemini-github-mcp-proxy setup --rotate   # 强制轮换全部 Secrets
-npx gemini-github-mcp-proxy verify           # 验收已部署 Worker
+gemini-github-mcp setup            # 首次部署
+gemini-github-mcp setup --rotate   # 强制轮换全部 Secrets
+gemini-github-mcp verify           # 验收已部署 Worker
 npm run check                                # 源码开发检查
 npm run deploy                               # 只重新部署当前代码
 ```
@@ -121,23 +145,20 @@ npm run deploy                               # 只重新部署当前代码
 指定其他部署地址验收：
 
 ```bash
-npx gemini-github-mcp-proxy verify --url https://example.workers.dev
+gemini-github-mcp verify --url https://example.workers.dev
 ```
 
 ## 分享给朋友
 
-朋友直接从 npm 安装，不需要下载源码。让每个人使用自己的 Cloudflare 账号和 GitHub PAT：
+把 [Releases](https://github.com/hrygo/gemini-github-mcp-proxy/releases/latest) 页面发给朋友。朋友不需要 npm 账号，也不需要下载仓库源码：
 
 ```bash
-npx gemini-github-mcp-proxy setup
-```
-
-或：
-
-```bash
-npm install --global gemini-github-mcp-proxy
+curl -fsSL https://github.com/hrygo/gemini-github-mcp-proxy/releases/latest/download/install.sh | sh
+npx wrangler login
 gemini-github-mcp setup
 ```
+
+Windows 用户使用上面的 PowerShell 命令。安装脚本会下载固定名称的 Release 制品、校验 `SHA-256`，然后执行全局安装。
 
 不要把以下内容发给别人：
 
@@ -191,7 +212,7 @@ GitHub API
 常见问题见 [TROUBLESHOOTING.md](TROUBLESHOOTING.md)。优先运行：
 
 ```bash
-npx gemini-github-mcp-proxy verify
+gemini-github-mcp verify
 npx wrangler deployments status
 ```
 
@@ -203,7 +224,7 @@ npm run check
 npm run dev
 ```
 
-测试覆盖 OAuth/DCR、鉴权、工具白名单、JSON/SSE 文件正文转换和部署辅助函数。
+测试覆盖 OAuth/DCR、鉴权、工具白名单、JSON/SSE 文件正文转换和部署辅助函数。发布流程与制品规范见 [RELEASING.md](RELEASING.md)。
 
 ## 参考
 

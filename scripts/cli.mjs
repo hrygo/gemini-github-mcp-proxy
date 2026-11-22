@@ -17,8 +17,8 @@ Gemini GitHub MCP Proxy
   gemini-github-mcp verify             验收当前部署
   gemini-github-mcp verify --url https://<worker>.workers.dev
 
-npx：
-  npx gemini-github-mcp-proxy setup
+从 GitHub 安装：
+  npm install --global https://github.com/hrygo/gemini-github-mcp-proxy/releases/latest/download/gemini-github-mcp-proxy.tgz
 
 首次使用前：
   1. Node.js 22+
