@@ -1,10 +1,17 @@
 # Gemini GitHub MCP Proxy
 
-让 Gemini Web 与 Gemini 手机 App 通过 GitHub 官方 Remote MCP 完成真实开发操作：读取仓库、修改文件、提交 commit、创建 PR、处理 Issue，不依赖 Gemini 执行 `gh`。
+明确支持 **Gemini Web 与 Gemini App（iOS/Android）**。两端都可经 GitHub 官方 Remote MCP 完成真实开发操作：读取仓库、修改文件、提交 commit、创建 PR、处理 Issue，不依赖 Gemini 执行 `gh`。
 
 每个使用者部署自己的 Cloudflare Worker，并绑定自己的 GitHub PAT。Worker 不内置工具权限白名单：**GitHub 能做什么由 PAT 决定，某次任务调用哪些工具由你决定。**
 
 [English quick start](README.en.md)
+
+## 支持范围与设计动因
+
+- **支持 Gemini App。** 在 Gemini Web 完成一次 Connector 授权后，同一 Google 账号可在 Gemini App 中继续读取仓库、修改文件、提交 commit、创建 PR 和处理 Issue。移动端不需要 `gh`、本机 shell 或额外代理。
+- **核心动因是配额入口分离。** 按当前 Google 产品规则，Gemini App 与 Antigravity 的使用额度分别计量。把 GitHub 开发能力接到 Gemini App 后，可以选择用 Gemini App 的额度执行开发任务，而不是占用 Antigravity 的额度，同时保留手机上随时继续任务的能力。
+- **两者不是替代关系。** Antigravity 的优势是更完整的本地 agent 与开发环境；Gemini App 的优势是独立额度入口与移动端连续性。复杂验证仍可交给 GitHub Actions、Codex 或其他 code agent 接管。
+- 额度上限、重置周期、可用模型和套餐限制会随账号、地区和时间变化；此处只说明两个产品分别计量，具体额度以 Google 对应账户页面和当前条款为准。
 
 ## 能力与权限边界
 

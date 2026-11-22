@@ -1,8 +1,15 @@
 # Gemini GitHub MCP Proxy
 
-Use GitHub from Gemini Web and the Gemini mobile app without `gh`: read repositories, edit files, push commits, create pull requests, manage Issues, and call every tool exposed by GitHub Remote MCP that your token permits.
+**Gemini Web and Gemini App for iOS/Android are both supported.** Use either entry point without `gh` to read repositories, edit files, push commits, create pull requests, manage Issues, and call every tool exposed by GitHub Remote MCP that your token permits.
 
 Deploy one Worker per person with that person's own GitHub PAT. The Worker does not impose a second tool whitelist: **the PAT defines GitHub authority, and the user decides which tools each task uses.**
+
+## Support and rationale
+
+- **Gemini App is supported.** After authorizing the connector once in Gemini Web, the same Google account can continue GitHub development from the Gemini app. Mobile use needs no `gh`, local shell, or always-on local proxy.
+- **The core motivation is quota separation.** Under the current Google product rules, Gemini App and Antigravity are metered separately. Connecting GitHub development to Gemini App lets work consume the Gemini App usage pool instead of Antigravity's, while keeping the task available on mobile.
+- **They are complementary.** Antigravity remains the stronger local agent and development environment. Gemini App provides the separate metered entry point and mobile continuity. Complex verification can continue in GitHub Actions, Codex, or another code agent.
+- Quotas, reset periods, available models, and plan limits vary by account, region, and time. This project states that the products are separately metered; consult the corresponding Google account pages and current terms for exact limits.
 
 ## Install
 
