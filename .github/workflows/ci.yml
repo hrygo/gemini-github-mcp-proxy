@@ -24,6 +24,18 @@ jobs:
       - run: npm audit signatures
       - run: npm run check
       - run: sh -n install.sh
+      - name: Validate PowerShell installer syntax
+        shell: pwsh
+        run: |
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            "$PWD/install.ps1", [ref]$tokens, [ref]$errors
+          ) | Out-Null
+          if ($errors.Count -gt 0) {
+            $errors | ForEach-Object { Write-Error $_ }
+            exit 1
+          }
       - run: npm run pack:release
       - run: (cd dist && sha256sum -c SHA256SUMS)
       - name: Smoke-test release archive

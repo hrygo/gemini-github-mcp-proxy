@@ -34,6 +34,18 @@ jobs:
       - name: Build release assets
         run: npm run pack:release
       - run: sh -n dist/install.sh
+      - name: Validate PowerShell installer syntax
+        shell: pwsh
+        run: |
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            "$PWD/dist/install.ps1", [ref]$tokens, [ref]$errors
+          ) | Out-Null
+          if ($errors.Count -gt 0) {
+            $errors | ForEach-Object { Write-Error $_ }
+            exit 1
+          }
       - run: (cd dist && sha256sum -c SHA256SUMS)
       - name: Smoke-test release archive
         run: |
