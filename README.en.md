@@ -1,19 +1,64 @@
 # Gemini GitHub MCP Proxy
 
-**Gemini Web and Gemini App for iOS/Android are both supported.** Use either entry point without `gh` to read repositories, edit files, push commits, create pull requests, manage Issues, and call every tool exposed by GitHub Remote MCP that your token permits.
+[![CI](https://github.com/hrygo/gemini-github-mcp-proxy/actions/workflows/ci.yml/badge.svg)](https://github.com/hrygo/gemini-github-mcp-proxy/actions/workflows/ci.yml)
+[![Latest Release](https://img.shields.io/github/v/release/hrygo/gemini-github-mcp-proxy?display_name=tag)](https://github.com/hrygo/gemini-github-mcp-proxy/releases/latest)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Node.js 22+](https://img.shields.io/badge/Node.js-22%2B-339933.svg)](https://nodejs.org/)
 
-Deploy one Worker per person with that person's own GitHub PAT. The Worker does not impose a second tool whitelist: **the PAT defines GitHub authority, and the user decides which tools each task uses.**
+**Turn Gemini Web and Gemini App into a real GitHub development entry point.**
 
-## Support and rationale
+Read repositories, edit files, push commits, create pull requests, manage Issues, and use the full GitHub Remote MCP tool surface available to your token. Gemini does not need `gh`, and you do not need an always-on local development proxy.
 
-- **Gemini App is supported.** After authorizing the connector once in Gemini Web, the same Google account can continue GitHub development from the Gemini app. Mobile use needs no `gh`, local shell, or always-on local proxy.
-- **The core motivation is quota separation.** Under the current Google product rules, Gemini App and Antigravity are metered separately ([Google One: each product has its own AI usage limits](https://support.google.com/googleone/answer/16286513?hl=en)). Connecting GitHub development to Gemini App lets work consume the Gemini App usage pool instead of Antigravity's, while keeping the task available on mobile.
-- **They are complementary.** Antigravity remains the stronger local agent and development environment. Gemini App provides the separate metered entry point and mobile continuity. Complex verification can continue in GitHub Actions, Codex, or another code agent.
-- Quotas, reset periods, available models, and plan limits vary by account, region, and time. This project states that the products are separately metered; consult the corresponding Google account pages and current terms for exact limits.
+[中文说明](README.md)
 
-## Install
+## Why it is useful
 
-No npm account is required. Packages are distributed through GitHub Releases.
+| Entry point | What you get | Best for |
+|---|---|---|
+| **Gemini App for iOS/Android** | A separately metered entry point, mobile continuity, and direct GitHub tools | Reading code, editing files, committing, and handling Issues or PRs from anywhere |
+| **Gemini Web** | The same authorized Connector as Gemini App | Initial setup, desktop work, and longer chat sessions |
+| **Antigravity** | A fuller local agent and development environment | Complex refactors, local builds, and sustained verification |
+
+### Core motivation: separate development quota
+
+Under the current Google product rules, **Gemini App and Antigravity are metered separately** ([Google One: each product has its own AI usage limits](https://support.google.com/googleone/answer/16286513?hl=en)).
+
+Connecting GitHub development to Gemini App lets development work consume Gemini App usage instead of Antigravity quota. After authorizing the Connector once in Gemini Web, the same Google account can continue from the Gemini app.
+
+The products are complementary: Antigravity provides the complete local environment, while Gemini App provides a separate metered entry point and mobile continuity. Complex verification can continue in GitHub Actions, Codex, or another code agent.
+
+> Quotas, refresh periods, available models, and plan limits vary by account, region, and time. Exact limits remain defined by the corresponding Google account pages and current terms.
+
+## Capabilities
+
+| GitHub operation | Gemini Web / Gemini App |
+|---|---|
+| Read public and private repositories, files, commits, and branches | ✅ |
+| Create branches, modify or delete files, and push commits | ✅ |
+| Create and update pull requests, reviews, and comments | ✅ |
+| Read, create, and update Issues | ✅ |
+| Inspect, cancel, or rerun Actions | ✅ with the required PAT permissions |
+| Manage repositories, Secrets, Packages, Discussions, and more | ✅ when exposed upstream and authorized by the PAT |
+
+All upstream GitHub MCP tools are available by default. The GitHub PAT defines repository and resource authority; Gemini selects tools and requests your approval.
+
+## Architecture
+
+```mermaid
+flowchart LR
+    GW[Gemini Web] --> C[Shared Connector]
+    GA[Gemini App\niOS / Android] --> C
+    C -->|OAuth 2.1 + S256 PKCE| W[Cloudflare Worker]
+    W -->|GitHub PAT| M[GitHub Remote MCP]
+    M --> A[GitHub API]
+    A --> R[Code / Branches / Commits / PR / Issues / Actions]
+```
+
+The Worker supplies the OAuth/DCR and refresh compatibility Gemini needs, keeps the PAT outside Gemini, and converts GitHub text `EmbeddedResource` blocks into content Gemini can read.
+
+## Quick start
+
+### 1. Install
 
 **macOS / Linux**
 
@@ -27,80 +72,130 @@ curl -fsSL https://github.com/hrygo/gemini-github-mcp-proxy/releases/latest/down
 irm https://github.com/hrygo/gemini-github-mcp-proxy/releases/latest/download/install.ps1 | iex
 ```
 
-Manual install:
+The GitHub installer verifies `SHA256SUMS`. No npm account or npm-published package is required.
 
-```bash
-npm install --global \
-  --allow-scripts=esbuild,fsevents,workerd \
-  https://github.com/hrygo/gemini-github-mcp-proxy/releases/latest/download/gemini-github-mcp-proxy.tgz
-```
+### 2. Deploy
 
-The GitHub installer verifies `SHA256SUMS`. Public npm Registry access is used for dependencies, but the tool itself does not need an npm account or npm publishing.
-
-## Permission model
-
-All upstream GitHub MCP tools are exposed by default. Actual results depend on:
-
-| Layer | Responsibility |
-|---|---|
-| GitHub PAT | Repository access and resource permissions |
-| GitHub Remote MCP | Tools currently available upstream |
-| Gemini | Tool selection and per-action approval |
-
-Use a fine-grained PAT and choose only the repositories and permissions you want. A common writable development baseline is Metadata read, Contents read/write, Issues read/write, and Pull requests read/write. Add Workflows write when editing workflow files, Actions read/write for CI operations, and other permissions when you intentionally need them. Classic PAT scopes work too.
-
-To reduce context or explicitly expose a subset:
-
-```bash
-gemini-github-mcp setup --tools get_file_contents,create_branch,create_or_update_file,create_pull_request
-```
-
-The selection is persisted as non-sensitive local configuration and reused by `setup --rotate`. Use `--tools all` to restore the full upstream set. Invalid or incomplete options fail closed instead of silently falling back to all tools.
-
-## Deploy
+Prepare Node.js 22+, a Cloudflare account, and a GitHub Personal Access Token:
 
 ```bash
 npx wrangler login
 gemini-github-mcp setup
 ```
 
-The installer and setup command never persist the PAT, authorization PIN, or signing secret outside Cloudflare Secrets.
+The setup command validates the PAT, generates the authorization PIN and signing secret, deploys the Worker, uploads Cloudflare Secrets, and verifies OAuth, DCR, MCP, and authentication endpoints.
 
-## Connect Gemini
+### 3. Connect Gemini
 
 1. Open Gemini Web → Settings → Connected apps.
 2. Add a custom MCP app named `GitHub Dev MCP`.
 3. Enter the MCP URL printed by setup.
 4. Complete OAuth and enter the generated 12-digit PIN.
-5. The same Google account can use the connector on Gemini mobile.
+5. Open Gemini App with the same Google account and reuse the Connector.
 
 In every new chat, type `@`, select `GitHub Dev MCP`, then enter the task.
 
-## Architecture
+## Permission model
 
-```mermaid
-flowchart LR
-    G[Gemini Web / Mobile] -->|OAuth 2.1 + S256 PKCE| W[Cloudflare Worker]
-    W -->|PAT + optional X-MCP-Tools| M[GitHub Remote MCP]
-    M -->|PAT-scoped requests| A[GitHub API]
-    A --> R[Repositories / Issues / PRs / Actions]
+| Layer | What it controls |
+|---|---|
+| GitHub PAT | Repository scope, resource type, and read/write authority |
+| GitHub Remote MCP | The upstream tools currently available |
+| Gemini | Tool selection and per-action approval |
+| Worker | OAuth, Bearer validation, PAT injection, and file-content compatibility |
+
+A fine-grained PAT with Metadata read, Contents read/write, Issues read/write, and Pull requests read/write is a practical development baseline. Add Workflows write, Actions read/write, or other permissions as needed. Classic PAT scopes work too.
+
+### Optional tool narrowing
+
+Use every upstream tool by default, or narrow the tool surface explicitly:
+
+```bash
+gemini-github-mcp setup --tools get_file_contents,create_branch,create_or_update_file,create_pull_request
 ```
 
-The Worker exists to bridge Gemini's OAuth registration/refresh requirements, keep the PAT out of Gemini, and convert embedded text resources that Gemini otherwise drops.
+Restore the complete upstream set:
 
-## Security
+```bash
+gemini-github-mcp setup --tools all
+```
 
-- The Worker injects a PAT stored only in Cloudflare Secrets.
-- Gemini never receives the PAT.
-- OAuth uses public-client DCR and mandatory S256 PKCE.
-- Authorization PIN submissions are limited to 10 attempts per source per minute with Cloudflare Rate Limiting.
-- `/mcp` requires a signed Bearer token.
-- The tool surface is not silently reduced. High-impact operations still require a capable PAT and your explicit instruction/approval.
-- Access and refresh tokens are stateless 10-year signed tokens; rotating `SIGNING_SECRET` revokes them together.
-- Cloudflare Rate Limiting is approximate and scoped by edge location; it is defense in depth, not an account system.
+The selection is stored as non-sensitive local configuration and reused by `setup --rotate`. Invalid options are reported immediately, so your chosen scope stays explicit.
 
-See [SECURITY.md](SECURITY.md) and [TROUBLESHOOTING.md](TROUBLESHOOTING.md).
+## Example workflow
+
+```text
+@GitHub Dev MCP Read owner/repo and the related Issue.
+Analyze the current state and propose a plan before writing files.
+```
+
+```text
+@GitHub Dev MCP Implement the confirmed plan on a new branch, commit the changes,
+and open a Draft PR with validation notes and risks.
+```
+
+Gemini can create branches, commits, pull requests, reviews, and Issue comments. GitHub Actions, Codex, or another code agent can then run tests and continue the fix from the same branch or PR.
+
+## Security by design
+
+- The PAT stays in Cloudflare Secrets and is never sent to Gemini.
+- OAuth uses Dynamic Client Registration, public clients, and mandatory S256 PKCE.
+- Gemini callback origins and paths are restricted to the expected OAuth redirect prefix.
+- `/mcp` requires a signed Bearer token issued by the Worker.
+- PIN submissions use Cloudflare Rate Limiting with a 10-attempt, 60-second approximate threshold per source IP.
+- The authorization page uses `no-store`, CSP, `X-Frame-Options: DENY`, and no-referrer headers.
+
+See [SECURITY.md](SECURITY.md) for the full threat model and token rotation procedure.
+
+## Operations
+
+```bash
+gemini-github-mcp verify
+gemini-github-mcp setup --rotate
+npx wrangler deployments status
+```
+
+Upgrade by rerunning the installer. Uninstall with:
+
+```bash
+npm uninstall --global gemini-github-mcp-proxy
+```
+
+## Design boundaries
+
+- Gemini App focuses on cloud GitHub operations; GitHub Actions and code agents carry the work through local builds and full verification.
+- Cloudflare Rate Limiting is approximate and scoped by edge location. The random 12-digit PIN, S256 PKCE, and HTTPS remain the primary authentication boundary.
+- Access and refresh tokens are stateless 10-year signed tokens. `setup --rotate` rotates `SIGNING_SECRET` and invalidates all existing tokens together.
+- Authorization codes use stateless signatures with a 10-minute lifetime, backed by PKCE and signature validation. This keeps the Worker lightweight and resilient.
 
 ## Share
 
-Share the [latest GitHub Release](https://github.com/hrygo/gemini-github-mcp-proxy/releases/latest), never an already-authorized Worker URL. Every user should deploy with their own Cloudflare account and GitHub PAT.
+Share the [latest GitHub Release](https://github.com/hrygo/gemini-github-mcp-proxy/releases/latest). Every user deploys with their own Cloudflare account, GitHub PAT, and random authorization PIN.
+
+## Cost
+
+Personal use fits within Cloudflare Workers Free. As of 2026-11-22, the official free tier includes 100,000 requests per day and 10 ms CPU per request. Higher traffic or stricter limits can use a Cloudflare plan as needed.
+
+- [Cloudflare Workers Pricing](https://developers.cloudflare.com/workers/platform/pricing/)
+- [Cloudflare Workers Limits](https://developers.cloudflare.com/workers/platform/limits/)
+
+## Development
+
+```bash
+npm install
+npm run check
+npm run dev
+npm run pack:release
+```
+
+Tests cover OAuth/DCR, mandatory PKCE, callback restrictions, full tool passthrough, optional tool filtering, authorization rate limiting, JSON/SSE normalization, installers, and deployment helpers. See [TROUBLESHOOTING.md](TROUBLESHOOTING.md) and [RELEASING.md](RELEASING.md).
+
+## References
+
+- [Google Gemini: connect and manage custom apps](https://support.google.com/gemini/answer/17209137)
+- [Google One: each product has its own AI usage limits](https://support.google.com/googleone/answer/16286513?hl=en)
+- [Google Antigravity: Plans](https://antigravity.google/docs/plans)
+- [GitHub Remote MCP Server configuration](https://github.com/github/github-mcp-server/blob/main/docs/remote-server.md)
+- [GitHub MCP tool-specific configuration](https://github.blog/changelog/2025-12-10-the-github-mcp-server-adds-support-for-tool-specific-configuration-and-more)
+- [GitHub MCP: Gemini DCR/refresh compatibility issue](https://github.com/github/github-mcp-server/issues/3519)
+- [GitHub MCP: EmbeddedResource file-body issue](https://github.com/github/github-mcp-server/issues/3189)
