@@ -27,5 +27,7 @@ jobs:
       - name: Smoke-test release archive
         run: |
           prefix="${RUNNER_TEMP}/gemini-github-mcp-install"
-          npm install --global --prefix "$prefix" "${GITHUB_WORKSPACE}/dist/gemini-github-mcp-proxy.tgz"
+          npm install --global --prefix "$prefix" \
+            --allow-scripts=esbuild,fsevents,workerd \
+            "${GITHUB_WORKSPACE}/dist/gemini-github-mcp-proxy.tgz"
           test "$("${prefix}/bin/gemini-github-mcp" --version)" = "$(node -p "require('./package.json').version")"

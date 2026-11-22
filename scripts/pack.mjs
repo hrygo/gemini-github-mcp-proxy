@@ -64,7 +64,7 @@ SHA-256：
   ${digest}
 
 安装：
-  npm install --global "${stablePath}"
+  npm install --global --allow-scripts=esbuild,fsevents,workerd "${stablePath}"
   gemini-github-mcp setup
 `);
 }

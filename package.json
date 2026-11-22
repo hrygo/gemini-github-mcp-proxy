@@ -1,6 +1,6 @@
 {
   "name": "gemini-github-mcp-proxy",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Deploy a one-command Cloudflare Worker that connects Gemini Web and mobile to GitHub Remote MCP.",
   "type": "module",
   "license": "MIT",

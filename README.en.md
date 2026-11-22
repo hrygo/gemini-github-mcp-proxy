@@ -24,6 +24,7 @@ Or download `gemini-github-mcp-proxy.tgz` and install it manually:
 
 ```bash
 npm install --global \
+  --allow-scripts=esbuild,fsevents,workerd \
   https://github.com/hrygo/gemini-github-mcp-proxy/releases/latest/download/gemini-github-mcp-proxy.tgz
 ```
 

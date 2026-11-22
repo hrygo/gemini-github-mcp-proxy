@@ -25,7 +25,7 @@ try {
     }
 
     Write-Host "正在安装 Gemini GitHub MCP..."
-    npm install --global $archivePath
+    npm install --global --allow-scripts=esbuild,fsevents,workerd $archivePath
     gemini-github-mcp --version
 
     Write-Host ""

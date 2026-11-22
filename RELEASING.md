@@ -49,7 +49,9 @@ tag 推送成功后，`.github/workflows/release.yml` 会：
 ```bash
 npm run pack:release
 sh -n install.sh
-npm install --global --prefix /tmp/gemini-github-mcp-install dist/gemini-github-mcp-proxy.tgz
+npm install --global --prefix /tmp/gemini-github-mcp-install \
+  --allow-scripts=esbuild,fsevents,workerd \
+  dist/gemini-github-mcp-proxy.tgz
 /tmp/gemini-github-mcp-install/bin/gemini-github-mcp --version
 (cd dist && shasum -a 256 -c SHA256SUMS)
 ```

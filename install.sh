@@ -36,7 +36,9 @@ else
 fi
 
 echo "正在安装 Gemini GitHub MCP..."
-npm install --global "${tmp_dir}/${archive}"
+npm install --global \
+  --allow-scripts=esbuild,fsevents,workerd \
+  "${tmp_dir}/${archive}"
 gemini-github-mcp --version
 
 cat <<'EOF'
