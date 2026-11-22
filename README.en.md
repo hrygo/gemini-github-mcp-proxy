@@ -7,7 +7,7 @@ Deploy one Worker per person with that person's own GitHub PAT. The Worker does 
 ## Support and rationale
 
 - **Gemini App is supported.** After authorizing the connector once in Gemini Web, the same Google account can continue GitHub development from the Gemini app. Mobile use needs no `gh`, local shell, or always-on local proxy.
-- **The core motivation is quota separation.** Under the current Google product rules, Gemini App and Antigravity are metered separately. Connecting GitHub development to Gemini App lets work consume the Gemini App usage pool instead of Antigravity's, while keeping the task available on mobile.
+- **The core motivation is quota separation.** Under the current Google product rules, Gemini App and Antigravity are metered separately ([Google One: each product has its own AI usage limits](https://support.google.com/googleone/answer/16286513?hl=en)). Connecting GitHub development to Gemini App lets work consume the Gemini App usage pool instead of Antigravity's, while keeping the task available on mobile.
 - **They are complementary.** Antigravity remains the stronger local agent and development environment. Gemini App provides the separate metered entry point and mobile continuity. Complex verification can continue in GitHub Actions, Codex, or another code agent.
 - Quotas, reset periods, available models, and plan limits vary by account, region, and time. This project states that the products are separately metered; consult the corresponding Google account pages and current terms for exact limits.
 

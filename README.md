@@ -9,7 +9,7 @@
 ## 支持范围与设计动因
 
 - **支持 Gemini App。** 在 Gemini Web 完成一次 Connector 授权后，同一 Google 账号可在 Gemini App 中继续读取仓库、修改文件、提交 commit、创建 PR 和处理 Issue。移动端不需要 `gh`、本机 shell 或额外代理。
-- **核心动因是配额入口分离。** 按当前 Google 产品规则，Gemini App 与 Antigravity 的使用额度分别计量。把 GitHub 开发能力接到 Gemini App 后，可以选择用 Gemini App 的额度执行开发任务，而不是占用 Antigravity 的额度，同时保留手机上随时继续任务的能力。
+- **核心动因是配额入口分离。** 按当前 Google 产品规则，Gemini App 与 Antigravity 的使用额度分别计量（[Google One 官方说明：每个产品都有自己的 AI 使用限制](https://support.google.com/googleone/answer/16286513?hl=zh-Hans)）。把 GitHub 开发能力接到 Gemini App 后，可以选择用 Gemini App 的额度执行开发任务，而不是占用 Antigravity 的额度，同时保留手机上随时继续任务的能力。
 - **两者不是替代关系。** Antigravity 的优势是更完整的本地 agent 与开发环境；Gemini App 的优势是独立额度入口与移动端连续性。复杂验证仍可交给 GitHub Actions、Codex 或其他 code agent 接管。
 - 额度上限、重置周期、可用模型和套餐限制会随账号、地区和时间变化；此处只说明两个产品分别计量，具体额度以 Google 对应账户页面和当前条款为准。
 
