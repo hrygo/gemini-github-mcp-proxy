@@ -70,6 +70,39 @@ export function findWorkersDevUrl(output) {
   return matches?.at(-1)?.replace(/[),.;]+$/, "") ?? null;
 }
 
+export function extractJsonObject(output) {
+  const start = output.indexOf("{");
+  const end = output.lastIndexOf("}");
+  if (start < 0 || end < start) return null;
+  try {
+    return JSON.parse(output.slice(start, end + 1));
+  } catch {
+    return null;
+  }
+}
+
+export function sanitizeGitHubPat(input) {
+  let value = String(input ?? "").trim();
+  if (
+    (value.startsWith('"') && value.endsWith('"')) ||
+    (value.startsWith("'") && value.endsWith("'"))
+  ) {
+    value = value.slice(1, -1).trim();
+  }
+  if (/^bearer\s+/i.test(value)) {
+    value = value.replace(/^bearer\s+/i, "").trim();
+  }
+  return value;
+}
+
+export function isSubdomainSetupError(output) {
+  const text = String(output ?? "").toLowerCase();
+  return (
+    text.includes("workers.dev") &&
+    (text.includes("subdomain") || text.includes("register"))
+  );
+}
+
 export function normalizeToolSelection(input) {
   if (input === undefined || input === null || input.trim() === "") return null;
   if (input.trim().toLowerCase() === "all") return null;
@@ -124,6 +157,43 @@ export function parseSetupOptions(rawArgs) {
       continue;
     }
     throw new Error(`未知参数：${value}。运行 gemini-github-mcp setup --help 查看用法。`);
+  }
+
+  return options;
+}
+
+export function parseVerifyOptions(rawArgs) {
+  const options = {
+    help: false,
+    url: undefined,
+  };
+
+  for (let index = 0; index < rawArgs.length; index += 1) {
+    const value = rawArgs[index];
+    if (value === "--help" || value === "-h") {
+      options.help = true;
+      continue;
+    }
+    if (value === "--url" || value.startsWith("--url=")) {
+      if (options.url !== undefined) {
+        throw new Error("--url 只能指定一次。");
+      }
+      const inline = value.startsWith("--url=");
+      const selected = inline ? value.slice("--url=".length) : rawArgs[index + 1];
+      if (
+        selected === undefined ||
+        selected.trim() === "" ||
+        (!inline && selected.startsWith("--"))
+      ) {
+        throw new Error(
+          "--url 缺少参数值。示例：--url https://<worker>.<subdomain>.workers.dev",
+        );
+      }
+      options.url = selected.trim();
+      if (!inline) index += 1;
+      continue;
+    }
+    throw new Error(`未知参数：${value}。运行 gemini-github-mcp verify --help 查看用法。`);
   }
 
   return options;

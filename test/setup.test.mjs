@@ -1,9 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
+  extractJsonObject,
   findWorkersDevUrl,
+  isSubdomainSetupError,
   normalizeBaseUrl,
   normalizeToolSelection,
   parseSetupOptions,
+  parseVerifyOptions,
+  sanitizeGitHubPat,
 } from "../scripts/lib.mjs";
 
 describe("setup helpers", () => {
@@ -30,6 +34,36 @@ Deployed gemini-github-mcp-proxy triggers
     expect(findWorkersDevUrl(output)).toBe(
       "https://gemini-github-mcp-proxy.friend.workers.dev",
     );
+  });
+
+  it("extracts JSON objects even when surrounded by CLI notices", () => {
+    const noisy = `⛅️ wrangler 4.166.0\n{"loggedIn":true,"accounts":[{"id":"acc-1","name":"Me"}]}\n`;
+    expect(extractJsonObject(noisy)).toEqual({
+      loggedIn: true,
+      accounts: [{ id: "acc-1", name: "Me" }],
+    });
+    expect(extractJsonObject("not json at all")).toBeNull();
+  });
+
+  it("sanitizes pasted GitHub PATs with quotes, whitespace, or Bearer prefix", () => {
+    expect(sanitizeGitHubPat("  github_pat_1234567890abcdef  ")).toBe(
+      "github_pat_1234567890abcdef",
+    );
+    expect(sanitizeGitHubPat('"github_pat_1234567890abcdef"')).toBe(
+      "github_pat_1234567890abcdef",
+    );
+    expect(sanitizeGitHubPat("Bearer ghp_1234567890abcdef1234")).toBe(
+      "ghp_1234567890abcdef1234",
+    );
+  });
+
+  it("detects Cloudflare missing workers.dev subdomain errors", () => {
+    expect(
+      isSubdomainSetupError(
+        "In a non-interactive environment, it's necessary to set a workers.dev subdomain",
+      ),
+    ).toBe(true);
+    expect(isSubdomainSetupError("Authentication error")).toBe(false);
   });
 
   it("defaults to the full upstream tool surface", () => {
@@ -71,5 +105,20 @@ Deployed gemini-github-mcp-proxy triggers
     expect(() => parseSetupOptions(["--tools", "all", "--tools", "all"])).toThrow(
       "只能指定一次",
     );
+  });
+
+  it("parses verify flags cleanly", () => {
+    expect(parseVerifyOptions([])).toEqual({ help: false, url: undefined });
+    expect(parseVerifyOptions(["--help"])).toEqual({ help: true, url: undefined });
+    expect(parseVerifyOptions(["--url", "https://example.workers.dev"])).toEqual({
+      help: false,
+      url: "https://example.workers.dev",
+    });
+    expect(parseVerifyOptions(["--url=https://example.workers.dev/mcp"])).toEqual({
+      help: false,
+      url: "https://example.workers.dev/mcp",
+    });
+    expect(() => parseVerifyOptions(["--url"])).toThrow("缺少参数值");
+    expect(() => parseVerifyOptions(["--unknown"])).toThrow("未知参数");
   });
 });

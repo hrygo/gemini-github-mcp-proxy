@@ -333,7 +333,17 @@ async function enforceAuthorizeRateLimit(
   });
 }
 
-function authorizationPage(params: URLSearchParams, error = ""): string {
+function prefersEnglish(request: Request): boolean {
+  const acceptLanguage = request.headers.get("accept-language")?.toLowerCase();
+  if (!acceptLanguage) return false;
+  return !acceptLanguage.includes("zh");
+}
+
+function authorizationPage(
+  params: URLSearchParams,
+  error = "",
+  english = false,
+): string {
   const values = {
     client_id: params.get("client_id") ?? "",
     redirect_uri: params.get("redirect_uri") ?? "",
@@ -342,15 +352,34 @@ function authorizationPage(params: URLSearchParams, error = ""): string {
     code_challenge_method: params.get("code_challenge_method") ?? "S256",
     scope: params.get("scope") || DEFAULT_SCOPE,
   };
+  const copy = english
+    ? {
+        lang: "en",
+        title: "Authorize Gemini GitHub MCP",
+        description:
+          "Enter the 12-digit authorization PIN generated during deployment. Once authorized, Gemini can invoke your GitHub Remote MCP tools.",
+        label: "Authorization PIN",
+        placeholder: "12-digit PIN",
+        submit: "Authorize and continue",
+      }
+    : {
+        lang: "zh-CN",
+        title: "授权 Gemini GitHub MCP",
+        description:
+          "输入部署时生成的 12 位授权 PIN。授权后，Gemini 可调用 GitHub Remote MCP 的代码、Issue 与 PR 工具。",
+        label: "授权 PIN",
+        placeholder: "输入 12 位数字 PIN",
+        submit: "授权并继续",
+      };
   const errorBlock = error
     ? `<div class="error">${escapeHtml(error)}</div>`
     : "";
   return `<!doctype html>
-<html lang="zh-CN">
+<html lang="${copy.lang}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>授权 Gemini GitHub MCP</title>
+  <title>${copy.title}</title>
   <style>
     :root { color-scheme: light dark; }
     * { box-sizing: border-box; }
@@ -368,13 +397,13 @@ function authorizationPage(params: URLSearchParams, error = ""): string {
       background: #238636; color: white; font-size: 1rem; font-weight: 700; cursor: pointer; }
     button:hover { background: #2ea043; }
     .error { margin-bottom: 16px; padding: 11px 12px; border: 1px solid #f85149;
-      border-radius: 8px; background: #f851491a; color: #ff7b72; }
+      border-radius: 8px; background: #f851491a; color: #ff7b72; line-height: 1.45; }
   </style>
 </head>
 <body>
   <main>
-    <h1>授权 Gemini GitHub MCP</h1>
-    <p>输入部署时生成的 12 位授权 PIN。授权后，Gemini 可调用 GitHub Remote MCP 的代码、Issue 与 PR 工具。</p>
+    <h1>${copy.title}</h1>
+    <p>${copy.description}</p>
     ${errorBlock}
     <form method="post" action="/authorize">
       ${Object.entries(values)
@@ -383,10 +412,10 @@ function authorizationPage(params: URLSearchParams, error = ""): string {
             `<input type="hidden" name="${name}" value="${escapeHtml(value)}">`,
         )
         .join("\n      ")}
-      <label for="pin">授权 PIN</label>
+      <label for="pin">${copy.label}</label>
       <input id="pin" name="pin" type="password" inputmode="numeric"
-        autocomplete="current-password" required autofocus>
-      <button type="submit">授权并继续</button>
+        autocomplete="one-time-code" placeholder="${copy.placeholder}" required autofocus>
+      <button type="submit">${copy.submit}</button>
     </form>
   </main>
 </body>
@@ -467,6 +496,7 @@ async function registerClient(request: Request, env: Env): Promise<Response> {
 
 async function authorizeRequest(request: Request, env: Env): Promise<Response> {
   const params = new URL(request.url).searchParams;
+  const english = prefersEnglish(request);
   if (request.method === "GET") {
     const redirectUri = params.get("redirect_uri") ?? "";
     if (!isAllowedRedirect(env, redirectUri)) {
@@ -477,7 +507,7 @@ async function authorizeRequest(request: Request, env: Env): Promise<Response> {
         status: 400,
       });
     }
-    return new Response(authorizationPage(params), {
+    return new Response(authorizationPage(params, "", english), {
       headers: {
         "content-type": "text/html; charset=utf-8",
         ...AUTHORIZATION_HEADERS,
@@ -498,7 +528,7 @@ async function authorizeRequest(request: Request, env: Env): Promise<Response> {
   for (const [key, value] of formData.entries()) {
     params.set(key, String(value));
   }
-  const pin = params.get("pin") ?? "";
+  const pin = (params.get("pin") ?? "").replace(/\s+/g, "");
   const redirectUri = params.get("redirect_uri") ?? "";
   if (!isAllowedRedirect(env, redirectUri)) {
     return new Response("Unsupported redirect_uri", { status: 400 });
@@ -509,7 +539,10 @@ async function authorizeRequest(request: Request, env: Env): Promise<Response> {
     });
   }
   if (!(await safelyEqual(pin, env.ADMIN_PIN))) {
-    return new Response(authorizationPage(params, "授权 PIN 不正确。"), {
+    const wrongPinMessage = english
+      ? "Invalid authorization PIN. If you lost it, run `gemini-github-mcp setup --rotate` in your terminal to generate a new one."
+      : "授权 PIN 不正确。如已遗失，请在终端运行 gemini-github-mcp setup --rotate 重新生成。";
+    return new Response(authorizationPage(params, wrongPinMessage, english), {
       status: 401,
       headers: {
         "content-type": "text/html; charset=utf-8",

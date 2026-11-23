@@ -3,16 +3,18 @@
 先运行：
 
 ```bash
+gemini-github-mcp status
 gemini-github-mcp verify
-npx wrangler deployments status
 ```
 
-`gemini-github-mcp verify` 会检查健康状态、OAuth metadata、动态客户端注册和 `/mcp` 的未认证保护。
+`gemini-github-mcp status` 会展示本机保存的部署地址、工具范围与线上 `/health` 状态；`gemini-github-mcp verify` 会检查健康状态、OAuth metadata、动态客户端注册和 `/mcp` 的未认证保护。
 
 ## `gemini-github-mcp setup` 提示 Cloudflare 未登录
 
+交互式终端下 `gemini-github-mcp setup` 会自动拉起内置 Wrangler 打开浏览器登录；如需手动登录或切换账号，运行：
+
 ```bash
-npx wrangler login
+gemini-github-mcp login
 gemini-github-mcp setup
 ```
 

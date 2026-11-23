@@ -82,14 +82,13 @@ npm install --global \
 
 ### 2. 部署
 
-准备 Node.js 22+、Cloudflare 账号和一个 GitHub Personal Access Token，然后运行：
+准备 Node.js 22+、Cloudflare 账号和一个 GitHub Personal Access Token，然后只需运行：
 
 ```bash
-npx wrangler login
 gemini-github-mcp setup
 ```
 
-`setup` 会验证 PAT、生成授权 PIN 与签名密钥、部署 Worker、上传 Cloudflare Secrets，并完成 OAuth、DCR、MCP 和鉴权端点验收。
+如果本机尚未登录 Cloudflare，`setup` 会自动调用内置 Wrangler 打开浏览器引导登录（无需单独安装或运行 `npx wrangler login`）。随后它会引导你创建并验证 PAT、生成授权 PIN 与签名密钥、部署 Worker、上传 Cloudflare Secrets，并完成 OAuth、DCR、MCP 和鉴权端点验收。
 
 成功后终端会输出：
 
@@ -102,7 +101,7 @@ GitHub MCP 工具范围：全部（默认透传）
 
 ### 3. 接入 Gemini
 
-1. 打开 Gemini Web 的 `设置 → 已连接的应用`。
+1. 打开 [Gemini Web](https://gemini.google.com/app) 的 `设置 → 已连接的应用`。
 2. 添加自定义 MCP App，名称填写 `GitHub Dev MCP`。
 3. 填入 `setup` 输出的 MCP URL。
 4. 完成 OAuth，并输入部署时生成的 12 位 PIN。
@@ -112,7 +111,7 @@ GitHub MCP 工具范围：全部（默认透传）
 
 1. 输入 `@`。
 2. 从自动完成菜单选择 `GitHub Dev MCP`。
-3. 输入任务并开始开发。
+3. 输入任务并开始开发（首次可发送 `@GitHub Dev MCP 列出我最近更新的 5 个仓库` 快速验证）。
 
 ## 权限由你掌控
 
@@ -190,16 +189,20 @@ Issue 协作：
 ## 日常运维
 
 ```bash
+gemini-github-mcp status
 gemini-github-mcp verify
+gemini-github-mcp setup --tools ...
 gemini-github-mcp setup --rotate
-npx wrangler deployments status
+gemini-github-mcp login
 ```
 
 | 命令 | 作用 |
 |---|---|
+| `gemini-github-mcp status` | 查看本机部署配置（MCP URL、工具范围）与线上 `/health` 状态 |
 | `gemini-github-mcp verify` | 验收线上健康检查、OAuth metadata、DCR 和 MCP 鉴权保护 |
+| `gemini-github-mcp setup --tools ...` | 调整暴露给 Gemini 的工具集（保留现有 PIN 与授权，无需重连） |
 | `gemini-github-mcp setup --rotate` | 轮换 PAT、PIN 与签名密钥，并重新部署 |
-| `gemini-github-mcp setup --tools ...` | 调整暴露给 Gemini 的工具集 |
+| `gemini-github-mcp login` | 使用内置 Wrangler 登录或切换 Cloudflare 账号 |
 | `gemini-github-mcp verify --url ...` | 验收指定的 Worker 地址 |
 
 升级时重新执行安装命令。卸载：
@@ -222,7 +225,6 @@ npm uninstall --global gemini-github-mcp-proxy
 
 ```bash
 curl -fsSL https://github.com/hrygo/gemini-github-mcp-proxy/releases/latest/download/install.sh | sh
-npx wrangler login
 gemini-github-mcp setup
 ```
 

@@ -8,11 +8,14 @@ import { createInterface } from "node:readline/promises";
 import { fileURLToPath } from "node:url";
 import {
   configPath,
+  extractJsonObject,
   findWorkersDevUrl,
+  isSubdomainSetupError,
   normalizeBaseUrl,
   normalizeToolSelection,
   parseSetupOptions,
   readConfig,
+  sanitizeGitHubPat,
   writeConfig,
 } from "./lib.mjs";
 import { verifyDeployment } from "./verify.mjs";
@@ -33,18 +36,19 @@ Gemini GitHub MCP Proxy 一键部署
 
 用法：
   gemini-github-mcp setup                          首次部署，默认开放全部 GitHub MCP 工具
-  gemini-github-mcp setup --tools all              显式选择全部工具
+  gemini-github-mcp setup --tools all              恢复开放全部工具（保留现有 PIN 与授权）
   gemini-github-mcp setup --tools get_file_contents,delete_file
-                                                    只暴露指定工具
+                                                    只暴露指定工具（保留现有 PIN 与授权）
   gemini-github-mcp setup --rotate                 轮换全部 Secret 并重新部署
 
 安装方式：
-  npm install --global https://github.com/hrygo/gemini-github-mcp-proxy/releases/latest/download/gemini-github-mcp-proxy.tgz
+  npm install --global --allow-scripts=esbuild,fsevents,workerd https://github.com/hrygo/gemini-github-mcp-proxy/releases/latest/download/gemini-github-mcp-proxy.tgz
 
 部署前：
   1. Node.js 22+
-  2. 已执行 npx wrangler login
-  3. 准备一个 fine-grained GitHub PAT
+  2. Cloudflare 账号（未登录时 setup 会自动打开浏览器完成登录）
+  3. 准备一个 fine-grained GitHub PAT：
+     https://github.com/settings/personal-access-tokens/new
 
 GitHub PAT 的仓库范围和权限由使用者决定。常见开发起点：
   Metadata: Read
@@ -67,22 +71,26 @@ function run(command, commandArgs, options = {}) {
         FORCE_COLOR: "0",
         CI: options.interactive ? "" : "1",
       },
-      stdio: ["pipe", "pipe", "pipe"],
+      stdio: options.inheritStdio ? "inherit" : ["pipe", "pipe", "pipe"],
     });
     let stdout = "";
     let stderr = "";
-    child.stdout.on("data", (chunk) => {
-      stdout += chunk;
-      if (options.stream) process.stdout.write(chunk);
-    });
-    child.stderr.on("data", (chunk) => {
-      stderr += chunk;
-      if (options.stream) process.stderr.write(chunk);
-    });
+    if (!options.inheritStdio) {
+      child.stdout.on("data", (chunk) => {
+        stdout += chunk;
+        if (options.stream) process.stdout.write(chunk);
+      });
+      child.stderr.on("data", (chunk) => {
+        stderr += chunk;
+        if (options.stream) process.stderr.write(chunk);
+      });
+    }
     child.on("error", reject);
     child.on("close", (code) => resolve({ code: code ?? 1, stdout, stderr }));
-    if (options.input !== undefined) child.stdin.end(options.input);
-    else child.stdin.end();
+    if (!options.inheritStdio) {
+      if (options.input !== undefined) child.stdin.end(options.input);
+      else child.stdin.end();
+    }
   });
 }
 
@@ -97,6 +105,50 @@ async function runWrangler(wranglerArgs, options = {}) {
     throw new Error(`wrangler ${wranglerArgs.join(" ")} 失败\n${detail}`);
   }
   return result;
+}
+
+async function getCloudflareAuth() {
+  const result = await run(process.execPath, [wranglerBin, "whoami", "--json"]);
+  const parsed = extractJsonObject(result.stdout);
+  if (
+    parsed &&
+    parsed.loggedIn &&
+    Array.isArray(parsed.accounts) &&
+    parsed.accounts.length > 0
+  ) {
+    return parsed;
+  }
+  return { loggedIn: false, accounts: [] };
+}
+
+async function ensureCloudflareAuth() {
+  let auth = await getCloudflareAuth();
+  if (auth.loggedIn && auth.accounts.length > 0) return auth;
+
+  if (!process.stdin.isTTY) {
+    throw new Error(
+      "Cloudflare 尚未登录。请先运行：gemini-github-mcp login（或配置 Cloudflare API Token）。",
+    );
+  }
+
+  console.log("检测到 Cloudflare 尚未登录，正在打开浏览器完成登录...\n");
+  const loginResult = await run(process.execPath, [wranglerBin, "login"], {
+    interactive: true,
+    inheritStdio: true,
+  });
+  if (loginResult.code !== 0) {
+    throw new Error(
+      "Cloudflare 登录未完成。请重试 gemini-github-mcp login，或配置 Cloudflare API Token。",
+    );
+  }
+
+  auth = await getCloudflareAuth();
+  if (!auth.loggedIn || !auth.accounts.length) {
+    throw new Error(
+      "未检测到已登录的 Cloudflare 账号。请运行 gemini-github-mcp login 后重试。",
+    );
+  }
+  return auth;
 }
 
 function hiddenPrompt(label) {
@@ -122,10 +174,16 @@ function hiddenPrompt(label) {
         if (char === "\u0003") return finish(new Error("已取消。"));
         if (char === "\r" || char === "\n") return finish();
         if (char === "\u007f" || char === "\b") {
-          value = value.slice(0, -1);
+          if (value.length > 0) {
+            value = value.slice(0, -1);
+            process.stdout.write("\b \b");
+          }
           continue;
         }
-        if (char >= " ") value += char;
+        if (char >= " ") {
+          value += char;
+          process.stdout.write("*");
+        }
       }
     }
 
@@ -199,6 +257,75 @@ async function validateGitHubPat(pat) {
   };
 }
 
+async function promptAndValidatePat() {
+  console.log(`
+请粘贴 fine-grained GitHub PAT（输入会以 * 掩码显示，且不会写入磁盘）。
+还没有 PAT？可前往创建：
+  https://github.com/settings/personal-access-tokens/new
+推荐起步权限：Metadata (Read)、Contents / Issues / Pull requests (Read and write)
+`);
+
+  const maxAttempts = 3;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    const raw = await hiddenPrompt("GitHub PAT: ");
+    const pat = sanitizeGitHubPat(raw);
+    if (pat.length < 20) {
+      if (attempt === maxAttempts) {
+        throw new Error("GitHub PAT 为空或过短。");
+      }
+      console.log(`  PAT 为空或过短，请重新粘贴（剩余 ${maxAttempts - attempt} 次机会）。\n`);
+      continue;
+    }
+
+    process.stdout.write("正在验证 GitHub PAT... ");
+    try {
+      const github = await validateGitHubPat(pat);
+      console.log(`通过（账号 ${github.login}）。`);
+      if (github.classic) {
+        console.log(
+          "提示：检测到可能为 classic PAT。建议改用仅授权目标仓库的 fine-grained PAT。",
+        );
+      }
+      return pat;
+    } catch (error) {
+      console.log("失败。");
+      if (attempt === maxAttempts) throw error;
+      console.log(
+        `  ${error instanceof Error ? error.message : error}\n  请重新粘贴（剩余 ${maxAttempts - attempt} 次机会）。\n`,
+      );
+    }
+  }
+  throw new Error("GitHub PAT 验证失败。");
+}
+
+async function deployWorker(account, upstreamTools) {
+  console.log("正在部署 Worker...");
+  const deployArgs = ["deploy"];
+  if (upstreamTools) {
+    deployArgs.push("--var", `UPSTREAM_TOOLS:${upstreamTools}`);
+  }
+  let deployment;
+  try {
+    deployment = await runWrangler(deployArgs, { stream: true });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (isSubdomainSetupError(message)) {
+      throw new Error(
+        `Cloudflare 账号尚未启用 workers.dev 子域。\n请先打开以下页面创建一个免费的 workers.dev 子域，然后重新运行 gemini-github-mcp setup：\n  https://dash.cloudflare.com/${account.id}/workers-and-pages\n\n原始错误：\n${message}`,
+      );
+    }
+    throw error;
+  }
+
+  const deployedUrl = findWorkersDevUrl(`${deployment.stdout}\n${deployment.stderr}`);
+  if (!deployedUrl) {
+    throw new Error(
+      `部署成功，但无法从 wrangler 输出识别 workers.dev 地址。\n请前往 Cloudflare Dashboard 确认该账号已启用 workers.dev 子域：\n  https://dash.cloudflare.com/${account.id}/workers-and-pages`,
+    );
+  }
+  return normalizeBaseUrl(deployedUrl);
+}
+
 async function existingSecrets() {
   let result;
   try {
@@ -249,19 +376,48 @@ async function main() {
   );
   console.log(`使用工具版本 ${packageJson.version}。`);
 
-  const whoami = await runWrangler(["whoami", "--json"]);
-  const auth = JSON.parse(whoami.stdout);
-  if (!auth.loggedIn || !auth.accounts?.length) {
-    throw new Error("Cloudflare 尚未登录。请先运行：npx wrangler login");
-  }
+  const auth = await ensureCloudflareAuth();
   const account = await selectAccount(auth.accounts);
   process.env.CLOUDFLARE_ACCOUNT_ID = account.id;
   console.log(`Cloudflare 已登录：${account.name}`);
 
+  const previousConfig = await readConfig();
+  const requestedTools =
+    options.tools ?? process.env.UPSTREAM_TOOLS ?? previousConfig?.upstreamTools;
+  const upstreamTools = normalizeToolSelection(
+    typeof requestedTools === "string" ? requestedTools : undefined,
+  );
+
   const secrets = await existingSecrets();
+  if (secrets.length > 0 && !rotate && options.tools !== undefined) {
+    console.log(
+      "\n检测到现有部署，正在仅更新工具范围（保留现有 PAT、授权 PIN 与 Gemini 连接）...",
+    );
+    const workerUrl = await deployWorker(account, upstreamTools);
+    console.log("正在验收 OAuth、DCR 与鉴权端点...");
+    const verification = await verifyWithRetry(workerUrl);
+    await writeConfig({
+      workerUrl,
+      mcpUrl: verification.mcpUrl,
+      workerName: packageJson.name,
+      upstreamTools: upstreamTools ?? "all",
+      configuredAt: new Date().toISOString(),
+    });
+    console.log(`
+工具范围已更新（无需在 Gemini 重新授权）
+
+MCP URL：${verification.mcpUrl}
+GitHub MCP 工具范围：${upstreamTools ?? "全部（默认透传）"}
+
+如需同时轮换 PAT、授权 PIN 与签名密钥，请运行：
+  gemini-github-mcp setup --rotate
+`);
+    return;
+  }
+
   if (secrets.length > 0 && !rotate) {
     const proceed = await confirm(
-      "检测到现有 Secrets。继续会轮换 PAT、授权 PIN 与签名密钥，使当前 Connector 失效。继续？[y/N] ",
+      "检测到现有 Secrets。继续会轮换 PAT、授权 PIN 与签名密钥，使当前 Connector 失效（如仅需调整工具集，请取消并改用 gemini-github-mcp setup --tools ...）。继续？[y/N] ",
     );
     if (!proceed) {
       console.log("已取消，没有修改云端配置。");
@@ -269,40 +425,10 @@ async function main() {
     }
   }
 
-  console.log("\n请粘贴 fine-grained GitHub PAT。输入不会显示，也不会写入磁盘。");
-  const pat = (await hiddenPrompt("GitHub PAT: ")).trim();
-  if (pat.length < 20) throw new Error("GitHub PAT 为空或过短。");
-
-  process.stdout.write("正在验证 GitHub PAT... ");
-  const github = await validateGitHubPat(pat);
-  console.log(`通过（账号 ${github.login}）。`);
-  if (github.classic) {
-    console.log(
-      "警告：检测到可能为 classic PAT。建议改用仅授权目标仓库的 fine-grained PAT。",
-    );
-  }
-
+  const pat = await promptAndValidatePat();
   const adminPin = generatePin();
   const signingSecret = randomBytes(48).toString("hex");
-  const previousConfig = await readConfig();
-  const requestedTools =
-    options.tools ?? process.env.UPSTREAM_TOOLS ??
-    previousConfig?.upstreamTools;
-  const upstreamTools = normalizeToolSelection(
-    typeof requestedTools === "string" ? requestedTools : undefined,
-  );
-
-  console.log("正在部署 Worker...");
-  const deployArgs = ["deploy"];
-  if (upstreamTools) {
-    deployArgs.push("--var", `UPSTREAM_TOOLS:${upstreamTools}`);
-  }
-  const deployment = await runWrangler(deployArgs, { stream: true });
-  const deployedUrl = findWorkersDevUrl(`${deployment.stdout}\n${deployment.stderr}`);
-  if (!deployedUrl) {
-    throw new Error("部署成功，但无法从 wrangler 输出识别 workers.dev 地址。");
-  }
-  const workerUrl = normalizeBaseUrl(deployedUrl);
+  const workerUrl = await deployWorker(account, upstreamTools);
 
   console.log("正在一次上传 Cloudflare Secrets...");
   await runWrangler(["secret", "bulk"], {
@@ -335,10 +461,11 @@ GitHub MCP 工具范围：${upstreamTools ?? "全部（默认透传）"}
   gemini-github-mcp setup --rotate
 
 下一步：
-1. 打开 Gemini Web → 设置 → 已连接的应用
+1. 打开 Gemini Web（https://gemini.google.com/app）→ 设置 → 已连接的应用
 2. 添加自定义 MCP App，名称填 GitHub Dev MCP
-3. MCP URL 填上面的地址，完成授权
-4. 在每个新聊天输入 @，从菜单选择 GitHub Dev MCP
+3. MCP URL 填上面的地址，完成 OAuth 并输入 12 位授权 PIN
+4. 新建聊天并发送以下测试指令验证连接：
+   @GitHub Dev MCP 列出我最近更新的 5 个仓库
 
 本机部署信息已保存到：
   ${configPath()}

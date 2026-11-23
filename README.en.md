@@ -74,24 +74,23 @@ The GitHub installer verifies `SHA256SUMS`. No npm account or npm-published pack
 
 ### 2. Deploy
 
-Prepare Node.js 22+, a Cloudflare account, and a GitHub Personal Access Token:
+Prepare Node.js 22+, a Cloudflare account, and a GitHub Personal Access Token, then run:
 
 ```bash
-npx wrangler login
 gemini-github-mcp setup
 ```
 
-The setup command validates the PAT, generates the authorization PIN and signing secret, deploys the Worker, uploads Cloudflare Secrets, and verifies OAuth, DCR, MCP, and authentication endpoints.
+If Cloudflare is not logged in yet, `setup` automatically launches the bundled Wrangler browser login (no separate `npx wrangler login` needed). It then guides you to enter and validate your PAT, generates the authorization PIN and signing secret, deploys the Worker, uploads Cloudflare Secrets, and verifies OAuth, DCR, MCP, and authentication endpoints.
 
 ### 3. Connect Gemini
 
-1. Open Gemini Web → Settings → Connected apps.
+1. Open [Gemini Web](https://gemini.google.com/app) → Settings → Connected apps.
 2. Add a custom MCP app named `GitHub Dev MCP`.
 3. Enter the MCP URL printed by setup.
 4. Complete OAuth and enter the generated 12-digit PIN.
 5. Open Gemini App with the same Google account and reuse the Connector.
 
-In every new chat, type `@`, select `GitHub Dev MCP`, then enter the task.
+In every new chat, type `@`, select `GitHub Dev MCP`, then enter your task (for a quick first check, try `@GitHub Dev MCP List my 5 most recently updated repositories`).
 
 ## Permission model
 
@@ -148,12 +147,14 @@ See [SECURITY.md](SECURITY.md) for the full threat model and token rotation proc
 ## Operations
 
 ```bash
+gemini-github-mcp status
 gemini-github-mcp verify
+gemini-github-mcp setup --tools ...
 gemini-github-mcp setup --rotate
-npx wrangler deployments status
+gemini-github-mcp login
 ```
 
-Upgrade by rerunning the installer. Uninstall with:
+Updating `--tools` on an existing deployment preserves your current PAT, authorization PIN, and Gemini Connector without forcing re-authorization. Upgrade by rerunning the installer. Uninstall with:
 
 ```bash
 npm uninstall --global gemini-github-mcp-proxy

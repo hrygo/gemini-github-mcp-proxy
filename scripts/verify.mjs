@@ -1,9 +1,22 @@
 #!/usr/bin/env node
 import { pathToFileURL } from "node:url";
-import { readConfig } from "./lib.mjs";
+import { normalizeBaseUrl, parseVerifyOptions, readConfig } from "./lib.mjs";
+
+function printHelp() {
+  console.log(`
+Gemini GitHub MCP Proxy 部署验收
+
+用法：
+  gemini-github-mcp verify
+  gemini-github-mcp verify --url https://<worker>.<subdomain>.workers.dev
+  gemini-github-mcp verify --url=https://<worker>.<subdomain>.workers.dev/mcp
+
+默认读取本机最近一次 setup 保存的部署地址，也可通过 MCP_URL 环境变量或 --url 指定。
+`);
+}
 
 export async function verifyDeployment(baseUrl) {
-  const origin = baseUrl.replace(/\/+$/, "").replace(/\/mcp$/, "");
+  const origin = normalizeBaseUrl(baseUrl);
   const checks = [];
 
   async function request(path, init = {}, expected = 200) {
@@ -82,10 +95,12 @@ export async function verifyDeployment(baseUrl) {
 }
 
 async function main() {
-  const urlArgIndex = process.argv.indexOf("--url");
+  const options = parseVerifyOptions(process.argv.slice(2));
+  if (options.help) return printHelp();
+
   const configuredUrl =
+    options.url ||
     process.env.MCP_URL ||
-    (urlArgIndex >= 0 ? process.argv[urlArgIndex + 1] : undefined) ||
     (await readConfig())?.workerUrl;
   if (!configuredUrl) {
     throw new Error(

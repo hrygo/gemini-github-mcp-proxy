@@ -6,12 +6,12 @@ base_url="https://github.com/${repo}/releases/latest/download"
 archive="gemini-github-mcp-proxy.tgz"
 
 if ! command -v node >/dev/null 2>&1 || ! command -v npm >/dev/null 2>&1; then
-  echo "未找到 npm。请先安装 Node.js 22 或更高版本。" >&2
+  echo "未找到 npm。请先安装 Node.js 22 或更高版本：https://nodejs.org/" >&2
   exit 1
 fi
 node_major=$(node -p 'Number(process.versions.node.split(".")[0])')
 if [ "$node_major" -lt 22 ]; then
-  echo "当前 Node.js 版本过低。请升级到 Node.js 22 或更高版本。" >&2
+  echo "当前 Node.js 版本过低（v$(node -p 'process.versions.node')）。请升级到 Node.js 22 或更高版本：https://nodejs.org/" >&2
   exit 1
 fi
 if ! command -v curl >/dev/null 2>&1; then
@@ -49,13 +49,27 @@ if [ "$npm_major" -ge 12 ]; then
 else
   npm install --global "${tmp_dir}/${archive}"
 fi
-gemini-github-mcp --version
 
-cat <<'EOF'
+if command -v gemini-github-mcp >/dev/null 2>&1; then
+  gemini-github-mcp --version
+  cat <<'EOF'
 
-安装完成。下一步：
-  1. npx wrangler login
-  2. gemini-github-mcp setup
+安装完成。下一步只需运行：
+  gemini-github-mcp setup
 
-每个使用者必须使用自己的 Cloudflare 账号和 GitHub PAT。
+（未登录 Cloudflare 时会自动打开浏览器引导登录；每个使用者请使用自己的 Cloudflare 账号和 GitHub PAT。）
 EOF
+else
+  npm_bin="$(npm prefix -g)/bin"
+  cat <<EOF
+
+安装完成，但当前 PATH 中未找到 gemini-github-mcp。
+请先将 npm 全局目录加入 PATH（或重新打开终端）：
+  export PATH="${npm_bin}:\$PATH"
+
+然后运行：
+  gemini-github-mcp setup
+
+（未登录 Cloudflare 时会自动打开浏览器引导登录；每个使用者请使用自己的 Cloudflare 账号和 GitHub PAT。）
+EOF
+fi
