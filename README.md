@@ -95,7 +95,7 @@ gemini-github-mcp setup
 成功后终端会输出：
 
 ```text
-Connector 名称：GitHub Dev MCP
+Connector 名称：GitHubDevMCP
 MCP URL：https://gemini-github-mcp-proxy.<你的子域>.workers.dev/mcp
 授权 PIN：<只显示一次>
 GitHub MCP 工具范围：全部（默认透传）
@@ -104,16 +104,18 @@ GitHub MCP 工具范围：全部（默认透传）
 ### 3. 接入 Gemini
 
 1. 打开 [Gemini Web](https://gemini.google.com/app) 的 `设置 → 已连接的应用`。
-2. 添加自定义 MCP App，名称填写 `GitHub Dev MCP`。
+2. 添加自定义 MCP App，名称填写 `GitHubDevMCP`。
 3. 填入 `setup` 输出的 MCP URL。
 4. 完成 OAuth，并输入部署时生成的 12 位 PIN。
 5. 使用同一 Google 账号打开 Gemini App，即可复用该 Connector。
 
+> Connector 名称请保持单个词，不要包含空格、`-`、`_` 或 `.`。Gemini 的 `@` 提及按空白分词，含空格的名称可能被截断，导致工具没有绑定。
+
 在每个新聊天中：
 
 1. 输入 `@`。
-2. 从自动完成菜单选择 `GitHub Dev MCP`。
-3. 输入任务并开始开发（首次可发送 `@GitHub Dev MCP 列出我最近更新的 5 个仓库` 快速验证）。
+2. 从自动完成菜单选择 `GitHubDevMCP`。
+3. 输入任务并开始开发（首次可发送 `@GitHubDevMCP 列出我最近更新的 5 个仓库` 快速验证）。
 
 ## 权限由你掌控
 
@@ -158,21 +160,21 @@ gemini-github-mcp setup --tools all
 先读后写：
 
 ```text
-@GitHub Dev MCP 读取 owner/repo 和相关 Issue。
+@GitHubDevMCP 读取 owner/repo 和相关 Issue。
 分析现状并给出修改计划，本轮保持只读。
 ```
 
 确认后实施：
 
 ```text
-@GitHub Dev MCP 按已确认方案创建新分支，修改目标文件并提交 commit。
+@GitHubDevMCP 按已确认方案创建新分支，修改目标文件并提交 commit。
 创建 Draft PR，说明变更、验证方式和风险。
 ```
 
 Issue 协作：
 
 ```text
-@GitHub Dev MCP 读取 Issue #123，在同一 Issue 回复结论，并关联对应的 Draft PR。
+@GitHubDevMCP 读取 Issue #123，在同一 Issue 回复结论，并关联对应的 Draft PR。
 ```
 
 需要删除文件、合并 PR、创建仓库、修改 Actions 等能力时，可以直接描述目标与范围。Gemini 会请求对应工具许可，GitHub PAT 则确保操作只能发生在其授权范围内。

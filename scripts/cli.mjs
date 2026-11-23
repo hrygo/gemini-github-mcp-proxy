@@ -4,7 +4,7 @@ import { readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { configPath, readConfig } from "./lib.mjs";
+import { CONNECTOR_NAME, configPath, readConfig } from "./lib.mjs";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const scripts = {
@@ -65,7 +65,7 @@ async function showStatus() {
   }
 
   console.log("\nGemini GitHub MCP Proxy 当前状态\n");
-  console.log(`  Connector 名称：GitHub Dev MCP`);
+  console.log(`  Connector 名称：${CONNECTOR_NAME}`);
   console.log(`  MCP URL：${config.mcpUrl || `${config.workerUrl}/mcp`}`);
   console.log(
     `  工具范围：${config.upstreamTools === "all" || !config.upstreamTools ? "全部（默认透传）" : config.upstreamTools}`,

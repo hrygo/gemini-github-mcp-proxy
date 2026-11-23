@@ -87,7 +87,7 @@ If Cloudflare is not logged in yet, `setup` automatically launches the bundled W
 On success, the terminal prints:
 
 ```text
-Connector 名称：GitHub Dev MCP
+Connector 名称：GitHubDevMCP
 MCP URL：https://gemini-github-mcp-proxy.<your-subdomain>.workers.dev/mcp
 授权 PIN：<shown once>
 GitHub MCP 工具范围：全部（默认透传）
@@ -96,12 +96,14 @@ GitHub MCP 工具范围：全部（默认透传）
 ### 3. Connect Gemini
 
 1. Open [Gemini Web](https://gemini.google.com/app) → Settings → Connected apps.
-2. Add a custom MCP app named `GitHub Dev MCP`.
+2. Add a custom MCP app named `GitHubDevMCP`.
 3. Enter the MCP URL printed by setup.
 4. Complete OAuth and enter the generated 12-digit PIN.
 5. Open Gemini App with the same Google account and reuse the Connector.
 
-In every new chat, type `@`, select `GitHub Dev MCP`, then enter your task (for a quick first check, try `@GitHub Dev MCP List my 5 most recently updated repositories`).
+> Keep the connector name a single mention-safe word without spaces, hyphens, underscores, or dots. Gemini resolves `@` mentions by whitespace-delimited tokens, so a spaced name can be truncated before the app is bound.
+
+In every new chat, type `@`, select `GitHubDevMCP`, then enter your task (for a quick first check, try `@GitHubDevMCP List my 5 most recently updated repositories`).
 
 ## Permission model
 
@@ -133,12 +135,12 @@ Running `setup --tools ...` on an existing deployment (without `--rotate`) updat
 ## Example workflow
 
 ```text
-@GitHub Dev MCP Read owner/repo and the related Issue.
+@GitHubDevMCP Read owner/repo and the related Issue.
 Analyze the current state and propose a plan before writing files.
 ```
 
 ```text
-@GitHub Dev MCP Implement the confirmed plan on a new branch, commit the changes,
+@GitHubDevMCP Implement the confirmed plan on a new branch, commit the changes,
 and open a Draft PR with validation notes and risks.
 ```
 

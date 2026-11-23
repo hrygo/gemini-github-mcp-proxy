@@ -7,6 +7,7 @@ import { dirname, join } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { fileURLToPath } from "node:url";
 import {
+  CONNECTOR_NAME,
   configPath,
   extractJsonObject,
   findWorkersDevUrl,
@@ -460,7 +461,7 @@ GitHub MCP 工具范围：${upstreamTools ?? "全部（默认透传）"}
   console.log(`
 部署成功
 
-Connector 名称：GitHub Dev MCP
+Connector 名称：${CONNECTOR_NAME}
 MCP URL：${verification.mcpUrl}
 授权 PIN：${adminPin}
 GitHub MCP 工具范围：${upstreamTools ?? "全部（默认透传）"}
@@ -470,10 +471,10 @@ GitHub MCP 工具范围：${upstreamTools ?? "全部（默认透传）"}
 
 下一步：
 1. 打开 Gemini Web（https://gemini.google.com/app）→ 设置 → 已连接的应用
-2. 添加自定义 MCP App，名称填 GitHub Dev MCP
+2. 添加自定义 MCP App，名称填 ${CONNECTOR_NAME}（不要包含空格）
 3. MCP URL 填上面的地址，完成 OAuth 并输入 12 位授权 PIN
 4. 新建聊天并发送以下测试指令验证连接：
-   @GitHub Dev MCP 列出我最近更新的 5 个仓库
+   @${CONNECTOR_NAME} 列出我最近更新的 5 个仓库
 
 本机部署信息已保存到：
   ${configPath()}

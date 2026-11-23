@@ -88,10 +88,20 @@ gemini-github-mcp setup --tools all
 
 在已有部署上仅传入 `--tools`（不带 `--rotate`）不会轮换 PAT、PIN 或中断 Gemini 连接，无需重新授权。`--tools` 会通过 GitHub Remote MCP 的 `X-MCP-Tools` 头生效；工具名拼写错误时，上游可能返回空集合或错误。
 
+## Connector 名称含空格导致 @ 提及异常
+
+如果 Connector 名称包含空格（例如旧版的 `GitHub Dev MCP`），Gemini 可能只把 `@` 后的第一个词识别为提及，导致工具没有绑定。名称应保持单个词，例如 `GitHubDevMCP`；不要使用空格、`-`、`_` 或 `.`。
+
+已存在的 Connector：
+
+1. 优先在 Gemini 设置中重命名。
+2. 没有重命名入口时，删除后重新添加，并重新完成 OAuth 与 PIN 授权。
+3. 旧聊天不会自动换绑；新建聊天后重新输入 `@` 选择。
+
 ## Gemini 显示 Connector 已连接，但模型说工具不可用
 
 1. 确认新聊天中先输入 `@`。
-2. 从自动完成菜单选择 `GitHub Dev MCP`。
+2. 从自动完成菜单选择 `GitHubDevMCP`。
 3. 确认没有把名称作为普通文本粘贴。
 4. 优先使用“自动”或 `Neon`。
 5. 新建聊天，避免沿用旧的工具绑定状态。
@@ -158,4 +168,4 @@ gemini-github-mcp setup --rotate
 gemini-github-mcp verify
 ```
 
-然后在 Gemini 中删除并重新添加 `GitHub Dev MCP`。旧令牌会因 `SIGNING_SECRET` 轮换而失效。
+然后在 Gemini 中删除并重新添加 `GitHubDevMCP`。旧令牌会因 `SIGNING_SECRET` 轮换而失效。

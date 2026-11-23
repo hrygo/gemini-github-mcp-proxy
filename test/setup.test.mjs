@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  CONNECTOR_NAME,
   extractJsonObject,
   findWorkersDevUrl,
   isSubdomainSetupError,
@@ -11,6 +12,10 @@ import {
 } from "../scripts/lib.mjs";
 
 describe("setup helpers", () => {
+  it("keeps the connector name a single mention-safe token", () => {
+    expect(CONNECTOR_NAME).toMatch(/^[A-Za-z0-9]+$/);
+  });
+
   it("accepts root and MCP URLs and returns the Worker origin", () => {
     expect(normalizeBaseUrl("https://example.workers.dev")).toBe(
       "https://example.workers.dev",
