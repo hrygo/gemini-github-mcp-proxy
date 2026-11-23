@@ -281,7 +281,46 @@ describe("Gemini GitHub MCP proxy", () => {
       "frame-ancestors 'none'",
     );
     expect(response.headers.get("x-frame-options")).toBe("DENY");
-    expect(await response.text()).toContain("授权 PIN");
+    const html = await response.text();
+    expect(html).toContain("授权 PIN");
+    expect(html).toContain('autocomplete="one-time-code"');
+
+    const englishResponse = await call(
+      `/authorize?client_id=mcp-client-test&redirect_uri=${encodeURIComponent(redirectUri)}&code_challenge=${"A".repeat(43)}&code_challenge_method=S256`,
+      { headers: { "accept-language": "en-US,en;q=0.9" } },
+    );
+    expect(englishResponse.status).toBe(200);
+    expect(await englishResponse.text()).toContain("Authorization PIN");
+  });
+
+  it("accepts PINs pasted with accidental whitespace and shows recovery hint on wrong PIN", async () => {
+    const redirectUri =
+      "https://oauth-redirect.googleusercontent.com/r/user_bound_custom-mcp-test";
+    const withSpaces = await call("/authorize", {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        client_id: "mcp-client-test",
+        redirect_uri: redirectUri,
+        code_challenge: "A".repeat(43),
+        code_challenge_method: "S256",
+        pin: ` ${env.ADMIN_PIN.slice(0, 3)} ${env.ADMIN_PIN.slice(3)} `,
+      }),
+    });
+    expect(withSpaces.status).toBe(302);
+
+    const wrongPin = await call("/authorize", {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        redirect_uri: redirectUri,
+        code_challenge: "A".repeat(43),
+        code_challenge_method: "S256",
+        pin: "000000",
+      }),
+    });
+    expect(wrongPin.status).toBe(401);
+    expect(await wrongPin.text()).toContain("gemini-github-mcp setup --rotate");
   });
 
   it("flattens GitHub text resources so Gemini can read file bodies", () => {

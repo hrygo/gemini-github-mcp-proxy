@@ -28,6 +28,8 @@ Worker 默认透传 GitHub Remote MCP 全部工具。需要缩小上下文或主
 gemini-github-mcp setup --tools tool_a,tool_b
 ```
 
+在已有部署上仅传入 `--tools`（不带 `--rotate`）只会更新 `UPSTREAM_TOOLS`，保留现有三个 Cloudflare Secret 与 Gemini Connector 授权；如需轮换凭据请显式运行 `gemini-github-mcp setup --rotate`。
+
 是否允许删除文件、合并 PR、创建或删除仓库、修改 Actions、读取 Secrets 等，由用户选择 PAT 权限并在 Gemini 中确认。任何“推荐权限”都只是起点，不是 Worker 强制限制。
 
 ## PAT 选择
