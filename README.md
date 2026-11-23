@@ -72,6 +72,8 @@ irm https://github.com/hrygo/gemini-github-mcp-proxy/releases/latest/download/in
 
 安装包由 GitHub Release 分发并校验 `SHA256SUMS`。不需要 npm 账号，也不需要把本工具发布到 npm。
 
+> **Windows 提示**：如果默认 PowerShell 执行策略禁止运行 `.ps1` 包装脚本，安装后直接运行 `gemini-github-mcp.cmd setup` 即可（无需修改系统策略）。请使用 PowerShell、Windows Terminal 或 CMD，避免在 Git Bash（mintty）下遇到非交互终端限制。
+
 手动安装：
 
 ```bash
@@ -149,7 +151,7 @@ gemini-github-mcp setup --tools get_file_contents,create_branch,create_or_update
 gemini-github-mcp setup --tools all
 ```
 
-工具选择会写入本机非敏感配置，并由后续 `setup --rotate` 沿用。参数采用严格校验；输入有误会直接提示，不会悄悄改变你的选择。
+在已有部署上仅传入 `--tools`（不带 `--rotate`）只会更新工具范围，保留现有 PAT、授权 PIN 与 Gemini Connector，无需重新授权。工具选择会写入本机非敏感配置，并由后续 `setup --rotate` 沿用；参数采用严格校验，输入有误会直接提示。
 
 ## 推荐用法
 

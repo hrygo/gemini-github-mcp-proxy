@@ -72,6 +72,8 @@ irm https://github.com/hrygo/gemini-github-mcp-proxy/releases/latest/download/in
 
 The GitHub installer verifies `SHA256SUMS`. No npm account or npm-published package is required.
 
+> **Windows note**: If PowerShell blocks `.ps1` wrapper scripts under your default execution policy, run `gemini-github-mcp.cmd setup` directly without changing system policy. Use PowerShell, Windows Terminal, or CMD rather than Git Bash (`mintty`).
+
 ### 2. Deploy
 
 Prepare Node.js 22+, a Cloudflare account, and a GitHub Personal Access Token, then run:
@@ -81,6 +83,15 @@ gemini-github-mcp setup
 ```
 
 If Cloudflare is not logged in yet, `setup` automatically launches the bundled Wrangler browser login (no separate `npx wrangler login` needed). It then guides you to enter and validate your PAT, generates the authorization PIN and signing secret, deploys the Worker, uploads Cloudflare Secrets, and verifies OAuth, DCR, MCP, and authentication endpoints.
+
+On success, the terminal prints:
+
+```text
+Connector 名称：GitHub Dev MCP
+MCP URL：https://gemini-github-mcp-proxy.<your-subdomain>.workers.dev/mcp
+授权 PIN：<shown once>
+GitHub MCP 工具范围：全部（默认透传）
+```
 
 ### 3. Connect Gemini
 
@@ -117,7 +128,7 @@ Restore the complete upstream set:
 gemini-github-mcp setup --tools all
 ```
 
-The selection is stored as non-sensitive local configuration and reused by `setup --rotate`. Invalid options are reported immediately, so your chosen scope stays explicit.
+Running `setup --tools ...` on an existing deployment (without `--rotate`) updates only the tool scope while preserving your existing PAT, authorization PIN, and Gemini Connector. The selection is stored as non-sensitive local configuration and reused by `setup --rotate`; invalid options are reported immediately.
 
 ## Example workflow
 
@@ -154,7 +165,16 @@ gemini-github-mcp setup --rotate
 gemini-github-mcp login
 ```
 
-Updating `--tools` on an existing deployment preserves your current PAT, authorization PIN, and Gemini Connector without forcing re-authorization. Upgrade by rerunning the installer. Uninstall with:
+| Command | Purpose |
+|---|---|
+| `gemini-github-mcp status` | Show local deployment config (MCP URL, tool scope) and live `/health` status |
+| `gemini-github-mcp verify` | Verify live health, OAuth metadata, DCR, and `/mcp` auth protection |
+| `gemini-github-mcp setup --tools ...` | Update exposed GitHub MCP tools without rotating Secrets or breaking Gemini auth |
+| `gemini-github-mcp setup --rotate` | Rotate PAT, PIN, and signing secret and redeploy |
+| `gemini-github-mcp login` | Log in or switch Cloudflare accounts using bundled Wrangler |
+| `gemini-github-mcp verify --url ...` | Verify a specific Worker URL |
+
+Upgrade by rerunning the installer. Uninstall with:
 
 ```bash
 npm uninstall --global gemini-github-mcp-proxy

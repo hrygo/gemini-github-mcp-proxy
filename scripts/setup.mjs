@@ -126,8 +126,12 @@ async function ensureCloudflareAuth() {
   if (auth.loggedIn && auth.accounts.length > 0) return auth;
 
   if (!process.stdin.isTTY) {
+    const winHint =
+      process.platform === "win32"
+        ? "（Windows 用户如在使用 Git Bash / mintty，请改用 PowerShell 或 Windows Terminal 运行。）"
+        : "";
     throw new Error(
-      "Cloudflare 尚未登录。请先运行：gemini-github-mcp login（或配置 Cloudflare API Token）。",
+      `Cloudflare 尚未登录。请先运行：gemini-github-mcp login（或配置 Cloudflare API Token）。${winHint}`,
     );
   }
 
@@ -153,7 +157,11 @@ async function ensureCloudflareAuth() {
 
 function hiddenPrompt(label) {
   if (!process.stdin.isTTY) {
-    throw new Error("setup 需要交互式终端，以安全读取 GitHub PAT。");
+    const winHint =
+      process.platform === "win32"
+        ? "（Windows 用户如在使用 Git Bash / mintty，请改用 PowerShell、Windows Terminal 或命令提示符运行。）"
+        : "";
+    throw new Error(`setup 需要交互式终端，以安全读取 GitHub PAT。${winHint}`);
   }
   return new Promise((resolve, reject) => {
     const stdin = process.stdin;

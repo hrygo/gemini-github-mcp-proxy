@@ -1,17 +1,33 @@
 $ErrorActionPreference = "Stop"
 
+# Ensure TLS 1.2 is enabled on Windows PowerShell 5.1
+try {
+    [Net.ServicePointManager]::SecurityProtocol =
+        [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+}
+catch {
+    # Ignore on platforms/runtimes where SecurityProtocol is managed automatically
+}
+
 $repo = "hrygo/gemini-github-mcp-proxy"
 $baseUrl = "https://github.com/$repo/releases/latest/download"
 $archive = "gemini-github-mcp-proxy.tgz"
 $tempDir = Join-Path ([System.IO.Path]::GetTempPath()) ("gemini-github-mcp-" + [guid]::NewGuid())
 
-if (-not (Get-Command node -ErrorAction SilentlyContinue) -or
-    -not (Get-Command npm -ErrorAction SilentlyContinue)) {
-    throw "未找到 npm。请先安装 Node.js 22 或更高版本：https://nodejs.org/"
+$nodeCmd = Get-Command node -ErrorAction SilentlyContinue
+# Prefer npm.cmd so installation still works when PowerShell ExecutionPolicy is Restricted
+$npmCmd = Get-Command npm.cmd -ErrorAction SilentlyContinue
+if (-not $npmCmd) {
+    $npmCmd = Get-Command npm -ErrorAction SilentlyContinue
 }
-$nodeMajor = [int](((node --version).TrimStart("v") -split "\.")[0])
+if (-not $nodeCmd -or -not $npmCmd) {
+    throw "Node.js / npm not found. Please install Node.js 22 or newer: https://nodejs.org/"
+}
+
+$nodeVersion = (& $nodeCmd.Source --version).Trim()
+$nodeMajor = [int](($nodeVersion.TrimStart("v") -split "\.")[0])
 if ($nodeMajor -lt 22) {
-    throw "当前 Node.js 版本过低（$(node --version)）。请升级到 Node.js 22 或更高版本：https://nodejs.org/"
+    throw "Node.js version is too old ($nodeVersion). Please upgrade to Node.js 22+: https://nodejs.org/"
 }
 
 New-Item -ItemType Directory -Path $tempDir | Out-Null
@@ -19,44 +35,80 @@ try {
     $archivePath = Join-Path $tempDir $archive
     $checksumsPath = Join-Path $tempDir "SHA256SUMS"
 
-    Write-Host "正在下载 $archive..."
+    Write-Host "Downloading $archive..."
     Invoke-WebRequest -UseBasicParsing "$baseUrl/$archive" -OutFile $archivePath
     Invoke-WebRequest -UseBasicParsing "$baseUrl/SHA256SUMS" -OutFile $checksumsPath
 
-    $expected = ((Get-Content $checksumsPath -First 1) -split "\s+")[0].ToLowerInvariant()
+    $checksumLine = Get-Content $checksumsPath | Where-Object { $_ -match "(^|\s)$([regex]::Escape($archive))$" } | Select-Object -First 1
+    if (-not $checksumLine) {
+        $checksumLine = Get-Content $checksumsPath -First 1
+    }
+    $expected = ($checksumLine.Trim() -split "\s+")[0].ToLowerInvariant()
     $actual = (Get-FileHash -Algorithm SHA256 $archivePath).Hash.ToLowerInvariant()
     if ($expected -ne $actual) {
-        throw "SHA-256 校验失败。"
+        throw "SHA-256 verification failed."
     }
 
-    Write-Host "正在安装 Gemini GitHub MCP..."
-    $npmMajor = [int](((npm --version) -split "\.")[0])
+    Write-Host "Installing Gemini GitHub MCP..."
+    $npmVersion = (& $npmCmd.Source --version).Trim()
+    $npmMajor = [int](($npmVersion -split "\.")[0])
     if ($npmMajor -ge 12) {
-        npm install --global --allow-scripts=esbuild,fsevents,workerd $archivePath
+        & $npmCmd.Source install --global --allow-scripts=esbuild,fsevents,workerd $archivePath
     }
     else {
-        npm install --global $archivePath
+        & $npmCmd.Source install --global $archivePath
+    }
+    if ($LASTEXITCODE -ne 0) {
+        throw "npm install failed with exit code $LASTEXITCODE."
     }
 
-    if (Get-Command gemini-github-mcp -ErrorAction SilentlyContinue) {
-        gemini-github-mcp --version
+    $policy = "Undefined"
+    try {
+        $policy = (Get-ExecutionPolicy).ToString()
+    }
+    catch {
+        $policy = "Undefined"
+    }
+    $policyBlocksPs1 = ($policy -eq "Restricted" -or $policy -eq "AllSigned")
+
+    $cliCmd = Get-Command gemini-github-mcp.cmd -ErrorAction SilentlyContinue
+    if (-not $cliCmd) {
+        $cliCmd = Get-Command gemini-github-mcp -ErrorAction SilentlyContinue
+    }
+
+    if ($cliCmd) {
+        $installedVersion = (& $cliCmd.Source --version).Trim()
+        Write-Host "Installed gemini-github-mcp $installedVersion"
         Write-Host ""
-        Write-Host "安装完成。下一步只需运行："
-        Write-Host "  gemini-github-mcp setup"
+        if ($policyBlocksPs1) {
+            Write-Host "Note: PowerShell ExecutionPolicy is '$policy', which blocks 'gemini-github-mcp.ps1'."
+            Write-Host "Next step (run the .cmd wrapper directly):"
+            Write-Host "  gemini-github-mcp.cmd setup"
+        }
+        else {
+            Write-Host "Installation complete. Next step:"
+            Write-Host "  gemini-github-mcp setup"
+        }
     }
     else {
-        $npmPrefix = (npm prefix -g).Trim()
+        $npmPrefix = (& $npmCmd.Source prefix -g).Trim()
         Write-Host ""
-        Write-Host "安装完成，但当前 PATH 中未找到 gemini-github-mcp。"
-        Write-Host "请将以下目录加入 PATH（或重新打开 PowerShell）："
-        Write-Host "  $npmPrefix"
+        Write-Host "Installation complete, but gemini-github-mcp is not on PATH yet."
+        Write-Host "Add it to this session (or restart PowerShell):"
+        Write-Host "  `$env:PATH = `"$npmPrefix;`$env:PATH`""
         Write-Host ""
-        Write-Host "然后运行："
-        Write-Host "  gemini-github-mcp setup"
+        if ($policyBlocksPs1) {
+            Write-Host "Then run:"
+            Write-Host "  gemini-github-mcp.cmd setup"
+        }
+        else {
+            Write-Host "Then run:"
+            Write-Host "  gemini-github-mcp setup"
+        }
     }
 
     Write-Host ""
-    Write-Host "（未登录 Cloudflare 时会自动打开浏览器引导登录；每个使用者请使用自己的 Cloudflare 账号和 GitHub PAT。）"
+    Write-Host "(Cloudflare browser login will open automatically if needed. Each user should use their own Cloudflare account and GitHub PAT.)"
 }
 finally {
     Remove-Item -Recurse -Force $tempDir -ErrorAction SilentlyContinue

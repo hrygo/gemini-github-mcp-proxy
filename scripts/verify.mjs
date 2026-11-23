@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { realpathSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 import { normalizeBaseUrl, parseVerifyOptions, readConfig } from "./lib.mjs";
 
@@ -113,7 +114,19 @@ async function main() {
   for (const check of result.checks) console.log(`  ✓ ${check}`);
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+function isDirectEntrypoint() {
+  if (!process.argv[1]) return false;
+  try {
+    return (
+      realpathSync(process.argv[1]).toLowerCase() ===
+      realpathSync(new URL(import.meta.url)).toLowerCase()
+    );
+  } catch {
+    return import.meta.url === pathToFileURL(process.argv[1]).href;
+  }
+}
+
+if (isDirectEntrypoint()) {
   main().catch((error) => {
     console.error(`\n验收失败：${error instanceof Error ? error.message : error}`);
     process.exitCode = 1;

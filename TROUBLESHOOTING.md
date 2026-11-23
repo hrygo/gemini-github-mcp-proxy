@@ -35,9 +35,18 @@ npm install --global \
   --allow-scripts=esbuild,fsevents,workerd
 ```
 
+## Windows 常见问题（PowerShell 执行策略、Git Bash、PATH）
+
+1. **提示“无法加载 `gemini-github-mcp.ps1`，因为在此系统上禁止运行脚本”**：
+   - 直接运行 `gemini-github-mcp.cmd setup`（跳过 `.ps1` 包装脚本，无需修改系统 PowerShell 执行策略）。
+2. **在 Git Bash（mintty）下提示“setup 需要交互式终端”**：
+   - Git Bash 的 mintty 终端下 Node.js 无法以原生 TTY 读取隐藏输入，请改用 **PowerShell**、**Windows Terminal** 或 **命令提示符（CMD）** 运行 `gemini-github-mcp setup`。
+3. **安装后提示找不到 `gemini-github-mcp` 命令**：
+   - 运行 `npm.cmd prefix -g` 获取全局目录（通常为 `%APPDATA%\npm`），在当前 PowerShell 会话执行 `$env:PATH = "$(npm.cmd prefix -g);$env:PATH"`，或将该目录加入系统环境变量 `PATH` 后重开终端。
+
 ## 部署后没有 `workers.dev` 地址
 
-打开 Cloudflare Dashboard → Workers & Pages，确认账号已启用 Workers，并创建 `workers.dev` 子域。企业策略可能禁止公开 `workers.dev`；此时需要配置自定义域名，并同步调整验收和 Connector URL。
+全新 Cloudflare 账号首次部署前需先开通免费的 `workers.dev` 子域。`setup` 检测到该问题时会直接打印对应账号的 Cloudflare Dashboard 链接，打开并创建子域后重新运行 `gemini-github-mcp setup` 即可。企业策略可能禁止公开 `workers.dev`；此时需要配置自定义域名，并同步调整验收和 Connector URL。
 
 ## GitHub PAT 验证失败
 
@@ -77,7 +86,7 @@ gemini-github-mcp setup --tools get_file_contents,pull_request_read,issue_read
 gemini-github-mcp setup --tools all
 ```
 
-`--tools` 会通过 GitHub Remote MCP 的 `X-MCP-Tools` 头生效；工具名拼写错误时，上游可能返回空集合或错误。
+在已有部署上仅传入 `--tools`（不带 `--rotate`）不会轮换 PAT、PIN 或中断 Gemini 连接，无需重新授权。`--tools` 会通过 GitHub Remote MCP 的 `X-MCP-Tools` 头生效；工具名拼写错误时，上游可能返回空集合或错误。
 
 ## Gemini 显示 Connector 已连接，但模型说工具不可用
 

@@ -48,7 +48,7 @@
   "scripts": {
     "setup": "node scripts/setup.mjs",
     "verify": "node scripts/verify.mjs",
-    "check": "npm test && npm run typecheck && node --check scripts/cli.mjs && node --check scripts/setup.mjs && node --check scripts/verify.mjs && node --check scripts/pack.mjs",
+    "check": "npm test && npm run typecheck && node --check scripts/cli.mjs && node --check scripts/lib.mjs && node --check scripts/setup.mjs && node --check scripts/verify.mjs && node --check scripts/pack.mjs",
     "pack:release": "node scripts/pack.mjs",
     "pack:share": "npm run pack:release",
     "dev": "wrangler dev",

@@ -102,7 +102,7 @@ if (command === "--help" || command === "-h" || command === "help") {
   process.exit(0);
 }
 if (command === "--version" || command === "-v" || command === "version") {
-  const packageJson = JSON.parse(await readFile(`${root}/package.json`, "utf8"));
+  const packageJson = JSON.parse(await readFile(join(root, "package.json"), "utf8"));
   console.log(packageJson.version);
   process.exit(0);
 }
