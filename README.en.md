@@ -225,7 +225,7 @@ npm run dev
 npm run pack:release
 ```
 
-Tests cover OAuth/DCR, mandatory PKCE, callback restrictions, full tool passthrough, optional tool filtering, authorization rate limiting, JSON/SSE normalization, installers, and deployment helpers. See [TROUBLESHOOTING.md](TROUBLESHOOTING.md) and [RELEASING.md](RELEASING.md).
+Tests cover OAuth/DCR, client-secret validation and HTTP Basic, mandatory PKCE, callback restrictions, full tool passthrough, optional tool filtering, authorization rate limiting, JSON/SSE normalization, PIN-only rotation, manual client registration, installers, and deployment helpers. See [TROUBLESHOOTING.md](TROUBLESHOOTING.md) and [RELEASING.md](RELEASING.md).
 
 ## References
 

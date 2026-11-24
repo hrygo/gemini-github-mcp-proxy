@@ -264,7 +264,7 @@ npm run dev
 npm run pack:release
 ```
 
-自动测试覆盖 OAuth/DCR、强制 PKCE、回调限制、全工具透传、可选工具过滤、授权限流、JSON/SSE 文件正文转换、安装器与部署辅助逻辑。发布流程见 [RELEASING.md](RELEASING.md)，常见问题见 [TROUBLESHOOTING.md](TROUBLESHOOTING.md)。
+自动测试覆盖 OAuth/DCR、客户端密钥校验与 HTTP Basic、强制 PKCE、回调限制、全工具透传、可选工具过滤、授权限流、JSON/SSE 文件正文转换、PIN-only 轮换、手动客户端注册、安装器与部署辅助逻辑。发布流程见 [RELEASING.md](RELEASING.md)，常见问题见 [TROUBLESHOOTING.md](TROUBLESHOOTING.md)。
 
 ## 参考
 
