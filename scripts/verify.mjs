@@ -87,6 +87,12 @@ export async function verifyDeployment(baseUrl) {
   if (typeof registration.client_id !== "string") {
     throw new Error("动态客户端注册未返回 client_id。");
   }
+  if (
+    registration.client_secret !== undefined &&
+    typeof registration.client_secret !== "string"
+  ) {
+    throw new Error("动态客户端注册返回的 client_secret 类型不正确。");
+  }
 
   return {
     origin,

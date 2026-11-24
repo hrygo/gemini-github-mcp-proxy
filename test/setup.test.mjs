@@ -6,6 +6,7 @@ import {
   isSubdomainSetupError,
   normalizeBaseUrl,
   normalizeToolSelection,
+  parseClientOptions,
   parseSetupOptions,
   parseVerifyOptions,
   sanitizeGitHubPat,
@@ -90,16 +91,25 @@ Deployed gemini-github-mcp-proxy triggers
     expect(parseSetupOptions([])).toEqual({
       help: false,
       rotate: false,
+      pinOnly: false,
       tools: undefined,
     });
     expect(parseSetupOptions(["--rotate", "--tools", "all"])).toEqual({
       help: false,
       rotate: true,
+      pinOnly: false,
       tools: "all",
+    });
+    expect(parseSetupOptions(["--pin-only"])).toEqual({
+      help: false,
+      rotate: false,
+      pinOnly: true,
+      tools: undefined,
     });
     expect(parseSetupOptions(["--tools=get_file_contents,delete_file"])).toEqual({
       help: false,
       rotate: false,
+      pinOnly: false,
       tools: "get_file_contents,delete_file",
     });
     expect(() => parseSetupOptions(["--tool", "delete_file"])).toThrow(
@@ -110,6 +120,38 @@ Deployed gemini-github-mcp-proxy triggers
     expect(() => parseSetupOptions(["--tools", "all", "--tools", "all"])).toThrow(
       "只能指定一次",
     );
+    expect(() => parseSetupOptions(["--pin-only", "--rotate"])).toThrow(
+      "不能与 --rotate",
+    );
+    expect(() => parseSetupOptions(["--pin-only", "--tools", "all"])).toThrow(
+      "不能与 --tools",
+    );
+  });
+
+  it("parses manual client registration flags", () => {
+    const redirectUri =
+      "https://oauth-redirect.googleusercontent.com/r/user_bound_custom-mcp-test";
+    expect(
+      parseClientOptions([
+        "--redirect-uri",
+        redirectUri,
+        "--url",
+        "https://example.workers.dev",
+        "--name",
+        "Gemini GitHub MCP",
+      ]),
+    ).toEqual({
+      help: false,
+      url: "https://example.workers.dev",
+      redirectUri,
+      name: "Gemini GitHub MCP",
+    });
+    expect(
+      parseClientOptions([`--redirect-uri=${redirectUri}`]),
+    ).toMatchObject({ redirectUri, name: "Gemini GitHub MCP" });
+    expect(parseClientOptions(["--help"])).toMatchObject({ help: true });
+    expect(() => parseClientOptions([])).toThrow("--redirect-uri");
+    expect(() => parseClientOptions(["--redirect-uri"])).toThrow("缺少");
   });
 
   it("parses verify flags cleanly", () => {

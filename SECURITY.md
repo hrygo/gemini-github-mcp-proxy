@@ -58,7 +58,7 @@ PAT 是真实凭据。不要提交到仓库、粘贴到聊天、写进命令参�
 | 数据 | 保存位置 | 是否进入 Gemini |
 |---|---|---|
 | `GITHUB_PAT` | Cloudflare Worker Secret | 否 |
-| `ADMIN_PIN` | Cloudflare Worker Secret、setup 一次性输出 | 用户手动输入授权页 |
+| `ADMIN_PIN` | Cloudflare Worker Secret、setup / `setup --pin-only` 一次性输出 | 用户手动输入授权页 |
 | `SIGNING_SECRET` | Cloudflare Worker Secret | 否 |
 | OAuth access / refresh token | Gemini 凭据存储；无状态签名令牌 | 是，作为 Bearer token |
 | 仓库文件、Issue、PR、Actions 等 | GitHub；工具调用时经 Worker 转发 | 是，取决于任务内容 |
@@ -67,7 +67,8 @@ Provider 配置保存在用户配置目录，只含 Worker URL、MCP URL、Worke
 
 ## OAuth 与令牌
 
-- 动态客户端注册返回公共客户端 `token_endpoint_auth_method: none`。
+- 动态客户端注册返回 `mcp-client-v2-*` 的 `client_id` 和由 `SIGNING_SECRET` HMAC 派生的 `client_secret`，默认 `token_endpoint_auth_method: client_secret_post`；v2 客户端携带密钥时会校验，旧 `mcp-client-*` 继续按公共客户端兼容。
+- 客户端密钥不落盘、不入库，由 `client_id` 与 `SIGNING_SECRET` 确定性派生；轮换 `SIGNING_SECRET` 会同时使旧客户端密钥失效。
 - 注册回调必须匹配受信 Gemini 回调 origin 与路径前缀。
 - 授权请求必须使用 `S256` PKCE。
 - 授权 PIN 为随机 12 位数字，只在 setup 完成后显示一次。
@@ -77,7 +78,7 @@ Provider 配置保存在用户配置目录，只含 Worker URL、MCP URL、Worke
 
 轮换语义：
 
-- 只轮换 `ADMIN_PIN`：阻止新授权，不使已有 token 失效。
+- 只轮换 `ADMIN_PIN`（`gemini-github-mcp setup --pin-only`）：阻止新授权，不使已有 token 失效。
 - 轮换 `SIGNING_SECRET`：使所有已有 access/refresh token 失效。
 - 轮换 `GITHUB_PAT`：旧 OAuth token 仍可访问 Worker，但后续 GitHub 请求改用新 PAT。
 - 删除 Gemini Connector：停止该客户端使用，但不单独吊销无状态 token。

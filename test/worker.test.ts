@@ -37,6 +37,59 @@ function getRedirectLocation(response: Response): URL {
   return new URL(location);
 }
 
+const testRedirectUri =
+  "https://oauth-redirect.googleusercontent.com/r/user_bound_custom-mcp-test";
+
+async function registerClient(): Promise<{
+  clientId: string;
+  clientSecret: string;
+}> {
+  const response = await call("/register", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      client_name: "Gemini",
+      redirect_uris: [testRedirectUri],
+    }),
+  });
+  const body = (await response.json()) as {
+    client_id: string;
+    client_secret: string;
+  };
+  return { clientId: body.client_id, clientSecret: body.client_secret };
+}
+
+async function authorizeCode(
+  clientId: string,
+  verifier: string,
+): Promise<string> {
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(verifier),
+  );
+  const challenge = btoa(String.fromCharCode(...new Uint8Array(digest)))
+    .replaceAll("+", "-")
+    .replaceAll("/", "_")
+    .replace(/=+$/, "");
+  const response = await call("/authorize", {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      client_id: clientId,
+      redirect_uri: testRedirectUri,
+      state: "test-state",
+      code_challenge: challenge,
+      code_challenge_method: "S256",
+      scope: "repo",
+      pin: env.ADMIN_PIN,
+    }),
+  });
+  const location = getRedirectLocation(response);
+  const code = location.searchParams.get("code");
+  if (!code) throw new Error("Missing authorization code");
+  return code;
+}
+
 describe("Gemini GitHub MCP proxy", () => {
   it("reports health from configuration", async () => {
     const response = await call("/health");
@@ -53,7 +106,7 @@ describe("Gemini GitHub MCP proxy", () => {
       token_endpoint: "https://proxy.example/token",
       registration_endpoint: "https://proxy.example/register",
       grant_types_supported: ["authorization_code", "refresh_token"],
-      token_endpoint_auth_methods_supported: ["none"],
+      token_endpoint_auth_methods_supported: ["none", "client_secret_post"],
       code_challenge_methods_supported: ["S256"],
     });
   });
@@ -73,9 +126,10 @@ describe("Gemini GitHub MCP proxy", () => {
     const registration = (await response.json()) as Record<string, unknown>;
     expect(registration).toMatchObject({
       client_name: "Gemini",
-      token_endpoint_auth_method: "none",
+      token_endpoint_auth_method: "client_secret_post",
     });
-    expect(registration).not.toHaveProperty("client_secret");
+    expect(typeof registration.client_id).toBe("string");
+    expect(typeof registration.client_secret).toBe("string");
   });
 
   it("rejects unauthenticated MCP requests", async () => {
@@ -87,46 +141,19 @@ describe("Gemini GitHub MCP proxy", () => {
   });
 
   it("completes authorization-code and refresh-token flows", async () => {
+    const { clientId, clientSecret } = await registerClient();
     const verifier = "test-verifier-with-enough-entropy";
-    const digest = await crypto.subtle.digest(
-      "SHA-256",
-      new TextEncoder().encode(verifier),
-    );
-    const challenge = btoa(String.fromCharCode(...new Uint8Array(digest)))
-      .replaceAll("+", "-")
-      .replaceAll("/", "_")
-      .replace(/=+$/, "");
-    const redirectUri =
-      "https://oauth-redirect.googleusercontent.com/r/user_bound_custom-mcp-test";
-    const form = new URLSearchParams({
-      client_id: "mcp-client-test",
-      redirect_uri: redirectUri,
-      state: "test-state",
-      code_challenge: challenge,
-      code_challenge_method: "S256",
-      scope: "repo",
-      pin: env.ADMIN_PIN,
-    });
-
-    const authorize = await call("/authorize", {
-      method: "POST",
-      headers: { "content-type": "application/x-www-form-urlencoded" },
-      body: form,
-    });
-    expect(authorize.status).toBe(302);
-    const location = getRedirectLocation(authorize);
-    expect(location.searchParams.get("state")).toBe("test-state");
-    const code = location.searchParams.get("code");
-    expect(code).toBeTruthy();
+    const code = await authorizeCode(clientId, verifier);
 
     const token = await call("/token", {
       method: "POST",
       headers: { "content-type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({
         grant_type: "authorization_code",
-        code: code!,
+        code,
         code_verifier: verifier,
-        client_id: "mcp-client-test",
+        client_id: clientId,
+        client_secret: clientSecret,
       }),
     });
     expect(token.status).toBe(200);
@@ -143,12 +170,51 @@ describe("Gemini GitHub MCP proxy", () => {
       body: JSON.stringify({
         grant_type: "refresh_token",
         refresh_token: tokenBody.refresh_token,
+        client_id: clientId,
+        client_secret: clientSecret,
       }),
     });
     expect(refreshed.status).toBe(200);
     expect((await refreshed.json()) as { access_token: string }).toHaveProperty(
       "access_token",
     );
+  });
+
+  it("rejects an invalid client secret and accepts HTTP Basic credentials", async () => {
+    const { clientId, clientSecret } = await registerClient();
+    const verifier = "test-verifier-with-enough-entropy";
+
+    const wrongSecretCode = await authorizeCode(clientId, verifier);
+    const wrongSecret = await call("/token", {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        grant_type: "authorization_code",
+        code: wrongSecretCode,
+        code_verifier: verifier,
+        client_id: clientId,
+        client_secret: "wrong-secret",
+      }),
+    });
+    expect(wrongSecret.status).toBe(401);
+    expect(await wrongSecret.json()).toMatchObject({
+      error: "invalid_client",
+    });
+
+    const basicCode = await authorizeCode(clientId, verifier);
+    const basic = await call("/token", {
+      method: "POST",
+      headers: {
+        "content-type": "application/x-www-form-urlencoded",
+        authorization: `Basic ${Buffer.from(`${clientId}:${clientSecret}`).toString("base64")}`,
+      },
+      body: new URLSearchParams({
+        grant_type: "authorization_code",
+        code: basicCode,
+        code_verifier: verifier,
+      }),
+    });
+    expect(basic.status).toBe(200);
   });
 
   it("rejects invalid PINs and redirect URIs", async () => {
@@ -283,6 +349,7 @@ describe("Gemini GitHub MCP proxy", () => {
     expect(response.headers.get("x-frame-options")).toBe("DENY");
     const html = await response.text();
     expect(html).toContain("授权 PIN");
+    expect(html).toContain("10 分钟内有效");
     expect(html).toContain('autocomplete="one-time-code"');
 
     const englishResponse = await call(
@@ -290,7 +357,9 @@ describe("Gemini GitHub MCP proxy", () => {
       { headers: { "accept-language": "en-US,en;q=0.9" } },
     );
     expect(englishResponse.status).toBe(200);
-    expect(await englishResponse.text()).toContain("Authorization PIN");
+    const englishHtml = await englishResponse.text();
+    expect(englishHtml).toContain("Authorization PIN");
+    expect(englishHtml).toContain("10 minutes");
   });
 
   it("accepts PINs pasted with accidental whitespace and shows recovery hint on wrong PIN", async () => {
@@ -320,7 +389,7 @@ describe("Gemini GitHub MCP proxy", () => {
       }),
     });
     expect(wrongPin.status).toBe(401);
-    expect(await wrongPin.text()).toContain("gemini-github-mcp setup --rotate");
+    expect(await wrongPin.text()).toContain("gemini-github-mcp setup --pin-only");
   });
 
   it("flattens GitHub text resources so Gemini can read file bodies", () => {

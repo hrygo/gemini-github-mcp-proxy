@@ -10,6 +10,7 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const scripts = {
   setup: "setup.mjs",
   verify: "verify.mjs",
+  client: "client.mjs",
 };
 
 function help() {
@@ -20,10 +21,12 @@ Gemini GitHub MCP Proxy
   gemini-github-mcp setup                         一键部署（未登录 Cloudflare 时自动引导登录）
   gemini-github-mcp setup --tools all             恢复开放全部 GitHub MCP 工具（不重置 PIN）
   gemini-github-mcp setup --tools tool_a,tool_b   调整暴露给 Gemini 的工具集（不重置 PIN）
+  gemini-github-mcp setup --pin-only               仅轮换授权 PIN（保留 PAT、签名密钥与现有连接）
   gemini-github-mcp setup --rotate                轮换 PAT、PIN 与签名密钥并重新部署
   gemini-github-mcp login                         登录或切换 Cloudflare 账号（使用内置 Wrangler）
   gemini-github-mcp verify                        验收当前部署
   gemini-github-mcp verify --url https://<worker>.workers.dev
+  gemini-github-mcp client --redirect-uri <uri>   DCR 失败时注册手动 OAuth 客户端
   gemini-github-mcp status                        查看本机部署配置与线上健康状态
 
 从 GitHub 安装：
@@ -71,7 +74,7 @@ async function showStatus() {
     `  工具范围：${config.upstreamTools === "all" || !config.upstreamTools ? "全部（默认透传）" : config.upstreamTools}`,
   );
   if (config.configuredAt) {
-    console.log(`  最近部署：${config.configuredAt}`);
+    console.log(`  配置时间：${config.configuredAt}`);
   }
   console.log(`  配置文件：${configPath()}`);
 

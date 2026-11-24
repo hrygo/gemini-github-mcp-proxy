@@ -131,6 +131,7 @@ export function parseSetupOptions(rawArgs) {
   const options = {
     help: false,
     rotate: false,
+    pinOnly: false,
     tools: undefined,
   };
 
@@ -142,6 +143,10 @@ export function parseSetupOptions(rawArgs) {
     }
     if (value === "--rotate") {
       options.rotate = true;
+      continue;
+    }
+    if (value === "--pin-only") {
+      options.pinOnly = true;
       continue;
     }
     if (value === "--tools" || value.startsWith("--tools=")) {
@@ -162,6 +167,68 @@ export function parseSetupOptions(rawArgs) {
       continue;
     }
     throw new Error(`未知参数：${value}。运行 gemini-github-mcp setup --help 查看用法。`);
+  }
+
+  if (options.pinOnly && options.rotate) {
+    throw new Error("--pin-only 不能与 --rotate 同时使用。");
+  }
+  if (options.pinOnly && options.tools !== undefined) {
+    throw new Error("--pin-only 不能与 --tools 同时使用。");
+  }
+
+  return options;
+}
+
+export function parseClientOptions(rawArgs) {
+  const options = {
+    help: false,
+    url: undefined,
+    redirectUri: undefined,
+    name: "Gemini GitHub MCP",
+  };
+
+  for (let index = 0; index < rawArgs.length; index += 1) {
+    const value = rawArgs[index];
+    if (value === "--help" || value === "-h") {
+      options.help = true;
+      continue;
+    }
+    const fields = [
+      ["--url", "url", "缺少 Worker 地址。"],
+      ["--redirect-uri", "redirectUri", "缺少 Gemini 回调地址。"],
+      ["--name", "name", "缺少客户端名称。"],
+    ];
+    const field = fields.find(
+      ([flag]) => value === flag || value.startsWith(`${flag}=`),
+    );
+    if (!field) {
+      throw new Error(
+        `未知参数：${value}。运行 gemini-github-mcp client --help 查看用法。`,
+      );
+    }
+    const [flag, key, missingMessage] = field;
+    if (options[key] !== undefined && key !== "name") {
+      throw new Error(`${flag} 只能指定一次。`);
+    }
+    const inline = value.startsWith(`${flag}=`);
+    const selected = inline
+      ? value.slice(flag.length + 1)
+      : rawArgs[index + 1];
+    if (
+      selected === undefined ||
+      selected.trim() === "" ||
+      (!inline && selected.startsWith("--"))
+    ) {
+      throw new Error(`${flag} ${missingMessage}`);
+    }
+    options[key] = selected.trim();
+    if (!inline) index += 1;
+  }
+
+  if (!options.help && !options.redirectUri) {
+    throw new Error(
+      "缺少 --redirect-uri。请从 Gemini 的“连接到 MCP 服务器”弹窗复制重定向 URI。",
+    );
   }
 
   return options;

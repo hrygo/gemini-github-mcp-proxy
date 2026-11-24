@@ -252,6 +252,23 @@ async function safelyEqual(a: string, b: string): Promise<boolean> {
   return diff === 0;
 }
 
+async function clientSecretFor(env: Env, clientId: string): Promise<string> {
+  const signature = await crypto.subtle.sign(
+    "HMAC",
+    await hmacKey(env.SIGNING_SECRET),
+    encoder.encode(`client-secret:${clientId}`),
+  );
+  return base64url(new Uint8Array(signature));
+}
+
+async function verifyClientSecret(
+  env: Env,
+  clientId: string,
+  secret: string,
+): Promise<boolean> {
+  return safelyEqual(secret, await clientSecretFor(env, clientId));
+}
+
 function escapeHtml(value: string): string {
   return value.replace(
     /[&<>"']/g,
@@ -358,6 +375,7 @@ function authorizationPage(
         title: "Authorize Gemini GitHub MCP",
         description:
           "Enter the 12-digit authorization PIN generated during deployment. Once authorized, Gemini can invoke your GitHub Remote MCP tools.",
+        hint: 'This page is valid for about 10 minutes. If you see "Session token is expired", restart the connector flow in Gemini.',
         label: "Authorization PIN",
         placeholder: "12-digit PIN",
         submit: "Authorize and continue",
@@ -367,6 +385,7 @@ function authorizationPage(
         title: "授权 Gemini GitHub MCP",
         description:
           "输入部署时生成的 12 位授权 PIN。授权后，Gemini 可调用 GitHub Remote MCP 的代码、Issue 与 PR 工具。",
+        hint: "此页面约 10 分钟内有效。若提示 Session token is expired，请回到 Gemini 重新添加 Connector。",
         label: "授权 PIN",
         placeholder: "输入 12 位数字 PIN",
         submit: "授权并继续",
@@ -390,6 +409,7 @@ function authorizationPage(
       border-radius: 16px; background: #161b22; box-shadow: 0 18px 50px #0008; }
     h1 { margin: 0 0 10px; font-size: 1.3rem; }
     p { margin: 0 0 20px; color: #9da7b3; line-height: 1.5; }
+    .hint { margin-top: -8px; font-size: .85rem; color: #8b949e; }
     label { display: block; margin-bottom: 7px; font-size: .9rem; font-weight: 650; }
     input { width: 100%; padding: 13px; margin-bottom: 18px; border: 1px solid #3d444d;
       border-radius: 9px; background: #0d1117; color: inherit; font-size: 1rem; }
@@ -404,6 +424,7 @@ function authorizationPage(
   <main>
     <h1>${copy.title}</h1>
     <p>${copy.description}</p>
+    <p class="hint">${escapeHtml(copy.hint)}</p>
     ${errorBlock}
     <form method="post" action="/authorize">
       ${Object.entries(values)
@@ -431,7 +452,7 @@ function metadataResponse(request: Request): Response {
     registration_endpoint: `${baseUrl}/register`,
     response_types_supported: ["code"],
     grant_types_supported: ["authorization_code", "refresh_token"],
-    token_endpoint_auth_methods_supported: ["none"],
+    token_endpoint_auth_methods_supported: ["none", "client_secret_post"],
     code_challenge_methods_supported: ["S256"],
   });
 }
@@ -461,6 +482,33 @@ async function parseBody(request: Request): Promise<Record<string, string>> {
   return result;
 }
 
+function safelyDecodeURIComponent(value: string): string {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
+function parseBasicClientCredentials(request: Request): {
+  client_id?: string;
+  client_secret?: string;
+} {
+  const header = request.headers.get("authorization") ?? "";
+  if (!/^basic\s+/i.test(header)) return {};
+  try {
+    const decoded = atob(header.replace(/^basic\s+/i, "").trim());
+    const separator = decoded.indexOf(":");
+    if (separator < 0) return {};
+    return {
+      client_id: safelyDecodeURIComponent(decoded.slice(0, separator)),
+      client_secret: safelyDecodeURIComponent(decoded.slice(separator + 1)),
+    };
+  } catch {
+    return {};
+  }
+}
+
 async function registerClient(request: Request, env: Env): Promise<Response> {
   const body = await request
     .json<Record<string, unknown>>()
@@ -478,14 +526,20 @@ async function registerClient(request: Request, env: Env): Promise<Response> {
       { status: 400 },
     );
   }
+  // v2 clients opt into secret validation. Legacy mcp-client-* IDs keep the
+  // public-client behavior so existing Gemini connectors survive an upgrade.
+  const clientId = `mcp-client-v2-${crypto.randomUUID()}`;
+  const clientSecret = await clientSecretFor(env, clientId);
   return json(
     {
-      client_id: `mcp-client-${crypto.randomUUID()}`,
+      client_id: clientId,
+      client_secret: clientSecret,
+      client_secret_expires_at: 0,
       client_id_issued_at: Math.floor(Date.now() / 1000),
       redirect_uris: redirectUris,
       grant_types: ["authorization_code", "refresh_token"],
       response_types: ["code"],
-      token_endpoint_auth_method: "none",
+      token_endpoint_auth_method: "client_secret_post",
       ...(typeof body.client_name === "string"
         ? { client_name: body.client_name }
         : {}),
@@ -540,8 +594,8 @@ async function authorizeRequest(request: Request, env: Env): Promise<Response> {
   }
   if (!(await safelyEqual(pin, env.ADMIN_PIN))) {
     const wrongPinMessage = english
-      ? "Invalid authorization PIN. If you lost it, run `gemini-github-mcp setup --rotate` in your terminal to generate a new one."
-      : "授权 PIN 不正确。如已遗失，请在终端运行 gemini-github-mcp setup --rotate 重新生成。";
+      ? "Invalid authorization PIN. If you lost it, run gemini-github-mcp setup --pin-only in your terminal to generate a new one without interrupting existing connections."
+      : "授权 PIN 不正确。如已遗失，请在终端运行 gemini-github-mcp setup --pin-only 生成新 PIN（不会中断现有连接）。";
     return new Response(authorizationPage(params, wrongPinMessage, english), {
       status: 401,
       headers: {
@@ -577,6 +631,20 @@ async function tokenRequest(request: Request, env: Env): Promise<Response> {
     "cache-control": "no-store",
     pragma: "no-cache",
   };
+  const basic = parseBasicClientCredentials(request);
+  if (basic.client_id && body.client_id && basic.client_id !== body.client_id) {
+    return json(
+      {
+        error: "invalid_client",
+        error_description: "Conflicting client credentials",
+      },
+      { status: 401, headers: noStore },
+    );
+  }
+  if (!body.client_id && basic.client_id) body.client_id = basic.client_id;
+  if (!body.client_secret && basic.client_secret) {
+    body.client_secret = basic.client_secret;
+  }
   let clientId = body.client_id || "gemini";
   let scope = body.scope || DEFAULT_SCOPE;
 
@@ -598,6 +666,19 @@ async function tokenRequest(request: Request, env: Env): Promise<Response> {
       }
       clientId = claims.client_id || clientId;
       scope = claims.scope || scope;
+      if (
+        clientId.startsWith("mcp-client-v2-") &&
+        body.client_secret &&
+        !(await verifyClientSecret(env, clientId, body.client_secret))
+      ) {
+        return json(
+          {
+            error: "invalid_client",
+            error_description: "Invalid client secret",
+          },
+          { status: 401, headers: noStore },
+        );
+      }
       const verifier = body.code_verifier || "";
       if (
         !claims.code_challenge ||
@@ -644,6 +725,19 @@ async function tokenRequest(request: Request, env: Env): Promise<Response> {
       }
       clientId = claims.client_id || clientId;
       scope = claims.scope || scope;
+      if (
+        clientId.startsWith("mcp-client-v2-") &&
+        body.client_secret &&
+        !(await verifyClientSecret(env, clientId, body.client_secret))
+      ) {
+        return json(
+          {
+            error: "invalid_client",
+            error_description: "Invalid client secret",
+          },
+          { status: 401, headers: noStore },
+        );
+      }
     } catch (error) {
       return json(
         {

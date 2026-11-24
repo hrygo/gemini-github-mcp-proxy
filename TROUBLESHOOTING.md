@@ -111,14 +111,46 @@ gemini-github-mcp setup --tools all
 
 实测中 `Hydrogen` 曾无法绑定自定义工具，`Carbon` 受订阅档位限制。模式名称和可用性可能随 Gemini UI 变化。
 
+## 授权 PIN 丢失
+
+只轮换 PIN，不动 PAT 和签名密钥：
+
+```bash
+gemini-github-mcp setup --pin-only
+gemini-github-mcp verify
+```
+
+现有 OAuth 令牌和 Gemini 连接不会失效。只有需要同时让旧令牌全部失效时，才使用 `setup --rotate`。
+
+## Gemini 提示“未能自动向此服务器注册”
+
+这是 Gemini 的 DCR 自动注册失败。复制弹窗里的“重定向 URI”，然后运行：
+
+```bash
+gemini-github-mcp client --redirect-uri "<粘贴重定向 URI>"
+```
+
+把输出的客户端 ID 和客户端密钥填回 Gemini。新版 Worker 会返回服务端派生的密钥；旧版 Worker 会生成本地密钥并给出提示。
+
+## 授权页点击“授权并继续”无反应或提示 Session token is expired
+
+授权页约 10 分钟内有效。过期后不要刷新或重复点击旧页面，回到 Gemini：
+
+1. 删除当前自定义 Connector。
+2. 重新添加 `GitHubDevMCP`。
+3. 在新弹出的授权页重新输入 PIN。
+
+如果页面仍无反应，检查浏览器是否拦截了弹窗或表单提交，或换一个窗口打开授权页。PIN 正确时 Worker 会返回 `302`；可用 `gemini-github-mcp verify` 确认部署正常。
+
 ## OAuth 授权页反复出现
 
 检查：
 
 1. 是否输入了 setup 最后输出的 12 位 PIN。
-2. 是否运行过 `gemini-github-mcp setup --rotate`；轮换后旧 PIN 和旧令牌全部失效。
+2. 如果只是 PIN 丢失，运行 `gemini-github-mcp setup --pin-only`；如果运行过 `setup --rotate`，旧 PIN 和旧令牌全部失效。
 3. Worker 日志中是否有 `/authorize` 400，通常是回调前缀不匹配。
 4. 是否在 Gemini 中重新添加了 Connector。
+5. 授权页是否已超过约 10 分钟的有效期。
 
 如果授权页返回 `429 Too many authorization attempts`，说明同一来源一分钟内提交 PIN 超过 10 次。等待 60 秒后重试；不要连续脚本化尝试。
 
@@ -165,9 +197,18 @@ curl -H "Authorization: Bearer <PAT>" \
 
 ## 如何安全重来
 
+只更换 PIN：
+
+```bash
+gemini-github-mcp setup --pin-only
+gemini-github-mcp verify
+```
+
+彻底轮换 PAT、PIN 与签名密钥：
+
 ```bash
 gemini-github-mcp setup --rotate
 gemini-github-mcp verify
 ```
 
-然后在 Gemini 中删除并重新添加 `GitHubDevMCP`。旧令牌会因 `SIGNING_SECRET` 轮换而失效。
+然后在 Gemini 中删除并重新添加 `GitHubDevMCP`。`setup --pin-only` 不会使现有令牌失效；`setup --rotate` 会因 `SIGNING_SECRET` 轮换使旧令牌全部失效。

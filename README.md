@@ -109,7 +109,19 @@ GitHub MCP 工具范围：全部（默认透传）
 4. 完成 OAuth，并输入部署时生成的 12 位 PIN。
 5. 使用同一 Google 账号打开 Gemini App，即可复用该 Connector。
 
+> 授权页约 10 分钟内有效。若提示 `Session token is expired`，请回到 Gemini 重新添加 Connector，不要刷新旧授权页。
+>
 > Connector 名称请使用不与已安装应用重名的单个词，例如 `GitHubDevMCP`；不要包含空格、`-`、`_` 或 `.`。如果名称以已有应用名开头（例如 `GitHub ...`），`@` 提及可能先命中已有应用，导致自定义应用无法绑定。
+
+### 如果 Gemini 无法自动注册
+
+如果 Gemini 提示“未能自动向此服务器注册”，复制弹窗里的重定向 URI，然后运行：
+
+```bash
+gemini-github-mcp client --redirect-uri "<重定向 URI>"
+```
+
+把输出的客户端 ID 和客户端密钥填回 Gemini。新版 Worker 会返回服务端派生的密钥；旧版 Worker 会生成本地密钥并给出提示。
 
 在每个新聊天中：
 
@@ -182,7 +194,7 @@ Issue 协作：
 ## 安全设计
 
 - **PAT 不进入 Gemini。** `GITHUB_PAT` 只保存在 Cloudflare Secret，由 Worker 注入 GitHub Remote MCP。
-- **OAuth 使用现代公共客户端模型。** 支持 DCR，强制 S256 PKCE，并锁定 Gemini 官方回调前缀。
+- **OAuth 同时支持自动与手动客户端。** DCR 会返回 `mcp-client-v2-*` 客户端 ID 和派生密钥，同时兼容旧 `mcp-client-*` 公共客户端；强制 S256 PKCE，并锁定 Gemini 官方回调前缀。
 - **MCP 端点受签名令牌保护。** `/mcp` 只接受由本 Worker 签发的有效 Bearer token。
 - **授权入口带限流。** PIN 提交使用 Cloudflare Rate Limiting，按来源 IP 配置 `10 次/60 秒` 的边缘近似阈值。
 - **部署凭据不落盘。** `setup` 通过 stdin 上传三个 Cloudflare Secrets；PAT、PIN 与签名密钥不写入仓库或配置文件。
@@ -196,16 +208,20 @@ Issue 协作：
 gemini-github-mcp status
 gemini-github-mcp verify
 gemini-github-mcp setup --tools ...
+gemini-github-mcp setup --pin-only
 gemini-github-mcp setup --rotate
+gemini-github-mcp client --redirect-uri ...
 gemini-github-mcp login
 ```
 
 | 命令 | 作用 |
 |---|---|
-| `gemini-github-mcp status` | 查看本机部署配置（MCP URL、工具范围）与线上 `/health` 状态 |
+| `gemini-github-mcp status` | 查看本机部署配置（MCP URL、工具范围、配置时间）与线上 `/health` 状态 |
 | `gemini-github-mcp verify` | 验收线上健康检查、OAuth metadata、DCR 和 MCP 鉴权保护 |
 | `gemini-github-mcp setup --tools ...` | 调整暴露给 Gemini 的工具集（保留现有 PIN 与授权，无需重连） |
+| `gemini-github-mcp setup --pin-only` | 仅轮换授权 PIN，保留 PAT、签名密钥与现有连接 |
 | `gemini-github-mcp setup --rotate` | 轮换 PAT、PIN 与签名密钥，并重新部署 |
+| `gemini-github-mcp client --redirect-uri ...` | DCR 失败时注册手动 OAuth 客户端 |
 | `gemini-github-mcp login` | 使用内置 Wrangler 登录或切换 Cloudflare 账号 |
 | `gemini-github-mcp verify --url ...` | 验收指定的 Worker 地址 |
 
@@ -219,7 +235,7 @@ npm uninstall --global gemini-github-mcp-proxy
 
 - Gemini App 专注云端 GitHub 操作；本地构建和完整测试由 GitHub Actions 或其他 code agent 接力，形成“云端修改 → CI 验证 → agent 修复”的闭环。
 - Cloudflare Rate Limiting 按边缘位置近似计数，突发请求可以短暂超过阈值；12 位随机 PIN、S256 PKCE 与 HTTPS 共同构成认证边界。
-- OAuth access/refresh token 当前是无状态签名令牌，有效期 10 年；`setup --rotate` 会通过轮换 `SIGNING_SECRET` 让全部旧令牌失效。
+- OAuth access/refresh token 当前是无状态签名令牌，有效期 10 年；`setup --pin-only` 只更换授权 PIN，`setup --rotate` 才会通过轮换 `SIGNING_SECRET` 让全部旧令牌失效。
 - 授权码采用无状态签名令牌，并叠加 10 分钟有效期、PKCE 和签名校验；该设计让 Worker 保持轻量和稳定。
 - Gemini App 与 Antigravity 的额度规则会持续演进，使用前请以 Google 当前账户页面为准。
 

@@ -101,7 +101,19 @@ GitHub MCP 工具范围：全部（默认透传）
 4. Complete OAuth and enter the generated 12-digit PIN.
 5. Open Gemini App with the same Google account and reuse the Connector.
 
+> The authorization page is valid for about 10 minutes. If you see `Session token is expired`, restart the connector flow in Gemini instead of refreshing the old page.
+>
 > Use a unique single-word connector name that does not collide with an installed app, for example `GitHubDevMCP`; avoid spaces, hyphens, underscores, and dots. If the name starts with an existing app name (for example `GitHub ...`), the `@` mention may resolve to the existing app first and fail to bind the custom app.
+
+### If Gemini cannot register automatically
+
+If Gemini says it could not register with the server, copy the redirect URI from the dialog and run:
+
+```bash
+gemini-github-mcp client --redirect-uri "<redirect URI>"
+```
+
+Paste the returned client ID and secret into Gemini. A current Worker returns a server-derived secret; an older Worker returns no secret, so the CLI generates a local one and prints a notice.
 
 In every new chat, type `@`, select `GitHubDevMCP`, then enter your task (for a quick first check, try `@GitHubDevMCP List my 5 most recently updated repositories`).
 
@@ -149,7 +161,7 @@ Gemini can create branches, commits, pull requests, reviews, and Issue comments.
 ## Security by design
 
 - The PAT stays in Cloudflare Secrets and is never sent to Gemini.
-- OAuth uses Dynamic Client Registration, public clients, and mandatory S256 PKCE.
+- OAuth supports Dynamic Client Registration with an `mcp-client-v2-*` client ID and derived secret, while remaining compatible with legacy `mcp-client-*` public clients; S256 PKCE is mandatory.
 - Gemini callback origins and paths are restricted to the expected OAuth redirect prefix.
 - `/mcp` requires a signed Bearer token issued by the Worker.
 - PIN submissions use Cloudflare Rate Limiting with a 10-attempt, 60-second approximate threshold per source IP.
@@ -163,16 +175,20 @@ See [SECURITY.md](SECURITY.md) for the full threat model and token rotation proc
 gemini-github-mcp status
 gemini-github-mcp verify
 gemini-github-mcp setup --tools ...
+gemini-github-mcp setup --pin-only
 gemini-github-mcp setup --rotate
+gemini-github-mcp client --redirect-uri ...
 gemini-github-mcp login
 ```
 
 | Command | Purpose |
 |---|---|
-| `gemini-github-mcp status` | Show local deployment config (MCP URL, tool scope) and live `/health` status |
+| `gemini-github-mcp status` | Show local deployment config (MCP URL, tool scope, config time) and live `/health` status |
 | `gemini-github-mcp verify` | Verify live health, OAuth metadata, DCR, and `/mcp` auth protection |
 | `gemini-github-mcp setup --tools ...` | Update exposed GitHub MCP tools without rotating Secrets or breaking Gemini auth |
+| `gemini-github-mcp setup --pin-only` | Rotate only the authorization PIN while preserving the PAT, signing secret, and existing connections |
 | `gemini-github-mcp setup --rotate` | Rotate PAT, PIN, and signing secret and redeploy |
+| `gemini-github-mcp client --redirect-uri ...` | Register a manual OAuth client when DCR fails |
 | `gemini-github-mcp login` | Log in or switch Cloudflare accounts using bundled Wrangler |
 | `gemini-github-mcp verify --url ...` | Verify a specific Worker URL |
 
@@ -186,7 +202,7 @@ npm uninstall --global gemini-github-mcp-proxy
 
 - Gemini App focuses on cloud GitHub operations; GitHub Actions and code agents carry the work through local builds and full verification.
 - Cloudflare Rate Limiting is approximate and scoped by edge location. The random 12-digit PIN, S256 PKCE, and HTTPS remain the primary authentication boundary.
-- Access and refresh tokens are stateless 10-year signed tokens. `setup --rotate` rotates `SIGNING_SECRET` and invalidates all existing tokens together.
+- Access and refresh tokens are stateless 10-year signed tokens. `setup --pin-only` only changes the authorization PIN; `setup --rotate` rotates `SIGNING_SECRET` and invalidates all existing tokens together.
 - Authorization codes use stateless signatures with a 10-minute lifetime, backed by PKCE and signature validation. This keeps the Worker lightweight and resilient.
 
 ## Share

@@ -40,6 +40,7 @@ Gemini GitHub MCP Proxy 一键部署
   gemini-github-mcp setup --tools all              恢复开放全部工具（保留现有 PIN 与授权）
   gemini-github-mcp setup --tools get_file_contents,delete_file
                                                     只暴露指定工具（保留现有 PIN 与授权）
+  gemini-github-mcp setup --pin-only               仅轮换授权 PIN（保留 PAT、签名密钥与现有连接）
   gemini-github-mcp setup --rotate                 轮换全部 Secret 并重新部署
 
 安装方式：
@@ -390,6 +391,33 @@ async function main() {
   process.env.CLOUDFLARE_ACCOUNT_ID = account.id;
   console.log(`Cloudflare 已登录：${account.name}`);
 
+  if (options.pinOnly) {
+    const config = await readConfig();
+    if (!config?.workerUrl) {
+      throw new Error(
+        "尚未找到本机部署配置。请先运行 gemini-github-mcp setup 完成首次部署。",
+      );
+    }
+    const workerName = config.workerName || packageJson.name;
+    const adminPin = generatePin();
+    console.log("\n正在仅轮换授权 PIN（保留 PAT、签名密钥与现有连接）...");
+    await runWrangler(["secret", "put", "ADMIN_PIN", "--name", workerName], {
+      input: adminPin,
+    });
+    console.log("正在验收 OAuth、DCR 与鉴权端点...");
+    const verification = await verifyWithRetry(config.workerUrl);
+    console.log(`
+授权 PIN 已更新
+
+授权 PIN：${adminPin}
+MCP URL：${verification.mcpUrl}
+
+新 PIN 只在这里显示一次。现有 OAuth 令牌与 Gemini 连接不受影响。
+如需让 Gemini 重新授权，请删除并重新添加 ${CONNECTOR_NAME}。
+`);
+    return;
+  }
+
   const previousConfig = await readConfig();
   const requestedTools =
     options.tools ?? process.env.UPSTREAM_TOOLS ?? previousConfig?.upstreamTools;
@@ -418,6 +446,9 @@ async function main() {
 MCP URL：${verification.mcpUrl}
 GitHub MCP 工具范围：${upstreamTools ?? "全部（默认透传）"}
 
+仅轮换授权 PIN（不中断现有连接）：
+  gemini-github-mcp setup --pin-only
+
 如需同时轮换 PAT、授权 PIN 与签名密钥，请运行：
   gemini-github-mcp setup --rotate
 `);
@@ -426,7 +457,7 @@ GitHub MCP 工具范围：${upstreamTools ?? "全部（默认透传）"}
 
   if (secrets.length > 0 && !rotate) {
     const proceed = await confirm(
-      "检测到现有 Secrets。继续会轮换 PAT、授权 PIN 与签名密钥，使当前 Connector 失效（如仅需调整工具集，请取消并改用 gemini-github-mcp setup --tools ...）。继续？[y/N] ",
+      "检测到现有 Secrets。继续会轮换 PAT、授权 PIN 与签名密钥，使当前 Connector 失效。如仅需调整工具集，请取消并改用 setup --tools ...；如仅需更换 PIN，请取消并改用 setup --pin-only。继续？[y/N] ",
     );
     if (!proceed) {
       console.log("已取消，没有修改云端配置。");
@@ -467,7 +498,7 @@ MCP URL：${verification.mcpUrl}
 GitHub MCP 工具范围：${upstreamTools ?? "全部（默认透传）"}
 
 授权 PIN 只在这里显示一次。请立即复制；遗失后运行：
-  gemini-github-mcp setup --rotate
+  gemini-github-mcp setup --pin-only
 
 下一步：
 1. 打开 Gemini Web（https://gemini.google.com/app）→ 设置 → 已连接的应用
