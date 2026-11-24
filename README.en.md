@@ -101,7 +101,7 @@ GitHub MCP 工具范围：全部（默认透传）
 4. Complete OAuth and enter the generated 12-digit PIN.
 5. Open Gemini App with the same Google account and reuse the Connector.
 
-> Keep the connector name a single mention-safe word without spaces, hyphens, underscores, or dots. Gemini resolves `@` mentions by whitespace-delimited tokens, so a spaced name can be truncated before the app is bound.
+> Keep the connector name a single mention-safe word without spaces, hyphens, underscores, or dots. Gemini may truncate `@` mentions at whitespace, so a spaced name can fail to bind the app.
 
 In every new chat, type `@`, select `GitHubDevMCP`, then enter your task (for a quick first check, try `@GitHubDevMCP List my 5 most recently updated repositories`).
 

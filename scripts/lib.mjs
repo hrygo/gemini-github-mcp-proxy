@@ -2,8 +2,8 @@ import { chmod, mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
-// Gemini resolves @-mentions by whitespace-delimited tokens. A connector name
-// containing spaces can therefore be truncated before it reaches the MCP app.
+// Gemini can truncate @-mentions at whitespace, so a connector name containing
+// spaces may fail to bind before it reaches the MCP app.
 export const CONNECTOR_NAME = "GitHubDevMCP";
 
 export function configPath() {
