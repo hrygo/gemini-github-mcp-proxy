@@ -88,9 +88,11 @@ gemini-github-mcp setup --tools all
 
 在已有部署上仅传入 `--tools`（不带 `--rotate`）不会轮换 PAT、PIN 或中断 Gemini 连接，无需重新授权。`--tools` 会通过 GitHub Remote MCP 的 `X-MCP-Tools` 头生效；工具名拼写错误时，上游可能返回空集合或错误。
 
-## Connector 名称含空格导致 @ 提及异常
+## Connector 名称与已有应用冲突导致 @ 提及异常
 
-如果 Connector 名称包含空格（例如旧版的 `GitHub Dev MCP`），Gemini 可能只把 `@` 后的第一个词识别为提及，导致工具没有绑定。名称应保持单个词，例如 `GitHubDevMCP`；不要使用空格、`-`、`_` 或 `.`。
+如果 Connector 名称以已安装应用名开头（例如自定义应用叫 `GitHub Dev MCP`，而内置 `GitHub` 已安装），Gemini 可能先把 `@GitHub` 解析为内置应用，后面的 `Dev MCP` 被当作普通文本，导致自定义应用没有绑定。
+
+名称应使用不与已有应用重名的单个词，例如 `GitHubDevMCP`；不要包含空格、`-`、`_` 或 `.`。其他带空格的应用（如 Google Workspace）通常不受影响，因为它们没有和已有应用重名。
 
 已存在的 Connector：
 

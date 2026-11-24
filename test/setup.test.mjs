@@ -12,7 +12,7 @@ import {
 } from "../scripts/lib.mjs";
 
 describe("setup helpers", () => {
-  it("keeps the connector name a single mention-safe token", () => {
+  it("keeps the connector name a unique mention-safe token", () => {
     expect(CONNECTOR_NAME).toMatch(/^[A-Za-z0-9]+$/);
   });
 
