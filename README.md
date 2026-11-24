@@ -11,6 +11,8 @@
 
 [English quick start](README.en.md)
 
+> **10 分钟内上手**：安装 CLI → 运行 `gemini-github-mcp setup` → 在 Gemini 添加 `GitHubDevMCP`。全程只需一个 Cloudflare 账号和一个 GitHub PAT。
+
 ## 为什么值得用
 
 | 入口 | 你获得什么 | 适合什么 |
@@ -42,21 +44,20 @@ Antigravity 与 Gemini App 是互补关系：前者提供完整的本地开发�
 
 默认透传 GitHub Remote MCP 当前提供的完整工具面。GitHub PAT 决定访问哪些仓库、能读写哪些资源；Gemini 负责选择工具并获得你的逐次许可。
 
-## 工作流程
-
-### 双端接入
-
-![Gemini Web 与 Gemini App 共享 Connector，经由 Cloudflare Worker 接入 GitHub Remote MCP](assets/architecture.svg)
-
-### 开发闭环
-
-![Gemini 从读取规划到创建分支、提交 Draft PR，再由 CI 与 code agent 验证并完成合并](assets/workflow.svg)
-
-Cloudflare Worker 负责三件事：补齐 Gemini 所需的 OAuth/DCR 与 refresh 兼容、把 PAT 隔离在 GitHub 之外、将 GitHub 返回的文本 `EmbeddedResource` 转成 Gemini 可读的文本内容。
-
 ## 快速开始
 
-### 1. 安装
+四步完成：**安装 → 部署 → 接入 Gemini → 验证**。
+
+### 准备
+
+| 需要 | 说明 |
+|---|---|
+| Node.js 22+ | 用 `node -v` 确认版本 |
+| Cloudflare 账号 | 免费版即可；`setup` 会引导登录 |
+| GitHub PAT | 建议 fine-grained；[创建入口](https://github.com/settings/personal-access-tokens/new)，权限见下文「权限由你掌控」 |
+| 浏览器 | 已登录你日常使用的 Google 账号 |
+
+### 第 1 步：安装 CLI
 
 **macOS / Linux**
 
@@ -70,11 +71,10 @@ curl -fsSL https://github.com/hrygo/gemini-github-mcp-proxy/releases/latest/down
 irm https://github.com/hrygo/gemini-github-mcp-proxy/releases/latest/download/install.ps1 | iex
 ```
 
-安装包由 GitHub Release 分发并校验 `SHA256SUMS`。不需要 npm 账号，也不需要把本工具发布到 npm。
+安装包由 GitHub Release 分发并校验 `SHA256SUMS`；不需要 npm 账号，也不需要把本工具发布到 npm。
 
-> **Windows 提示**：如果默认 PowerShell 执行策略禁止运行 `.ps1` 包装脚本，安装后直接运行 `gemini-github-mcp.cmd setup` 即可（无需修改系统策略）。请使用 PowerShell、Windows Terminal 或 CMD，避免在 Git Bash（mintty）下遇到非交互终端限制。
-
-手动安装：
+<details>
+<summary>手动安装（npm 已就绪时）</summary>
 
 ```bash
 npm install --global \
@@ -82,15 +82,23 @@ npm install --global \
   https://github.com/hrygo/gemini-github-mcp-proxy/releases/latest/download/gemini-github-mcp-proxy.tgz
 ```
 
-### 2. 部署
+</details>
 
-准备 Node.js 22+、Cloudflare 账号和一个 GitHub Personal Access Token，然后只需运行：
+> **Windows 提示**：如果默认 PowerShell 执行策略禁止运行 `.ps1` 包装脚本，安装后直接运行 `gemini-github-mcp.cmd setup` 即可（无需修改系统策略）。请使用 PowerShell、Windows Terminal 或 CMD，避免在 Git Bash（mintty）下遇到非交互终端限制。
+
+### 第 2 步：部署 Worker
 
 ```bash
 gemini-github-mcp setup
 ```
 
-如果本机尚未登录 Cloudflare，`setup` 会自动调用内置 Wrangler 打开浏览器引导登录（无需单独安装或运行 `npx wrangler login`）。随后它会引导你创建并验证 PAT、生成授权 PIN 与签名密钥、部署 Worker、上传 Cloudflare Secrets，并完成 OAuth、DCR、MCP 和鉴权端点验收。
+它会依次完成：
+
+1. 未登录 Cloudflare 时自动打开浏览器引导登录；
+2. 提示 PAT 创建入口并验证你粘贴的 token；
+3. 生成 12 位授权 PIN 与签名密钥；
+4. 部署 Worker 并上传三个 Cloudflare Secrets；
+5. 验收 OAuth、DCR、MCP 与鉴权端点。
 
 成功后终端会输出：
 
@@ -101,33 +109,84 @@ MCP URL：https://gemini-github-mcp-proxy.<你的子域>.workers.dev/mcp
 GitHub MCP 工具范围：全部（默认透传）
 ```
 
-### 3. 接入 Gemini
+> **先保存 PIN。** 它只显示一次，下一步接入 Gemini 时要用。遗失后运行 `gemini-github-mcp setup --pin-only` 重新生成，现有连接不会失效。
+
+### 第 3 步：接入 Gemini
 
 1. 打开 [Gemini Web](https://gemini.google.com/app) 的 `设置 → 已连接的应用`。
 2. 添加自定义 MCP App，名称填写 `GitHubDevMCP`。
-3. 填入 `setup` 输出的 MCP URL。
-4. 完成 OAuth，并输入部署时生成的 12 位 PIN。
+3. 填入上一步输出的 `/mcp` 地址。
+4. 完成 OAuth，并输入 12 位授权 PIN。
 5. 使用同一 Google 账号打开 Gemini App，即可复用该 Connector。
 
-> 授权页约 10 分钟内有效。若提示 `Session token is expired`，请回到 Gemini 重新添加 Connector，不要刷新旧授权页。
+> **名称必须唯一且不含空格。** 不要用 `GitHub Dev MCP` 这类以已安装应用开头的名称，`@` 提及可能先命中内置 GitHub。保持单个词，不含空格、`-`、`_`、`.`。
 >
-> Connector 名称请使用不与已安装应用重名的单个词，例如 `GitHubDevMCP`；不要包含空格、`-`、`_` 或 `.`。如果名称以已有应用名开头（例如 `GitHub ...`），`@` 提及可能先命中已有应用，导致自定义应用无法绑定。
+> **授权页约 10 分钟内有效。** 若提示 `Session token is expired`，请回到 Gemini 重新添加 Connector，不要刷新旧授权页。
 
-### 如果 Gemini 无法自动注册
+#### 如果 Gemini 提示“未能自动向此服务器注册”
 
-如果 Gemini 提示“未能自动向此服务器注册”，复制弹窗里的重定向 URI，然后运行：
+复制弹窗里的重定向 URI，然后运行：
 
 ```bash
 gemini-github-mcp client --redirect-uri "<重定向 URI>"
 ```
 
-把输出的客户端 ID 和客户端密钥填回 Gemini。新版 Worker 会返回服务端派生的密钥；旧版 Worker 会生成本地密钥并给出提示。
+把输出的客户端 ID 和客户端密钥填回弹窗。新版 Worker 返回服务端派生的密钥；旧版 Worker 会生成本地密钥并给出提示。
 
-在每个新聊天中：
+### 第 4 步：验证
 
-1. 输入 `@`。
-2. 从自动完成菜单选择 `GitHubDevMCP`。
-3. 输入任务并开始开发（首次可发送 `@GitHubDevMCP 列出我最近更新的 5 个仓库` 快速验证）。
+新建聊天，输入 `@`，从菜单选择 `GitHubDevMCP`，发送：
+
+```text
+列出我最近更新的 5 个仓库，不要修改任何内容。
+```
+
+看到仓库列表即接入成功。首次工具调用会请求许可，选择“允许一次”即可。
+
+> 每个新聊天都要重新输入 `@` 并从菜单点选；只在正文手写 `@GitHubDevMCP` 不会绑定工具。
+
+### 卡住了？
+
+| 现象 | 处理 |
+|---|---|
+| `@` 菜单里没有 `GitHubDevMCP` | 确认名称唯一、已新建聊天、是从菜单点选而非手打 |
+| 授权页点“授权并继续”无反应 | 页面已过期，回 Gemini 重新添加 Connector |
+| 提示“未能自动注册” | 用 `gemini-github-mcp client --redirect-uri` 手动注册 |
+| 模型说工具不可用 | 确认 `@` 已绑定，模式选“自动”或 `Neon` |
+| 请求返回 401 | 删除并重新添加 Connector，重新授权 |
+| `429 Too many authorization attempts` | 等待 60 秒再试，不要脚本化重试 |
+
+更多分支见 [TROUBLESHOOTING.md](TROUBLESHOOTING.md)。
+
+## 工作流程
+
+### 双端接入
+
+```mermaid
+flowchart LR
+  subgraph clients["你的入口"]
+    web["Gemini Web<br/>首次配置 · 桌面长任务"]
+    app["Gemini App<br/>iOS / Android · 独立额度"]
+  end
+  web -->|"OAuth 授权 + @GitHubDevMCP"| worker["Cloudflare Worker<br/>OAuth / DCR · Bearer 校验<br/>PAT 注入 · 正文兼容"]
+  app -->|"同一 Google 账号复用连接"| worker
+  worker -->|"Bearer + X-MCP-Tools"| mcp["GitHub Remote MCP<br/>api.githubcopilot.com/mcp"]
+  mcp --> gh[("GitHub<br/>仓库 · Issue · PR · Actions")]
+```
+
+### 开发闭环
+
+```mermaid
+flowchart LR
+  read["① 读取与规划<br/>仓库 · Issue · PR"] --> edit["② 分支与提交<br/>create_branch · commit"]
+  edit --> pr["③ Draft PR<br/>变更 · 验证 · 风险"]
+  pr --> ci["④ CI 验证<br/>GitHub Actions"]
+  ci -->|失败| fix["⑤ code agent 修复<br/>Codex / Antigravity"]
+  fix --> ci
+  ci -->|通过| merge["⑥ 审阅并合并"]
+```
+
+Cloudflare Worker 负责三件事：补齐 Gemini 所需的 OAuth/DCR 与 refresh 兼容、把 PAT 隔离在 GitHub 之外、将 GitHub 返回的文本 `EmbeddedResource` 转成 Gemini 可读的文本内容。
 
 ## 权限由你掌控
 

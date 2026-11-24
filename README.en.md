@@ -11,6 +11,8 @@ Read repositories, edit files, push commits, create pull requests, manage Issues
 
 [中文说明](README.md)
 
+> **Ten minutes to first call**: install the CLI → run `gemini-github-mcp setup` → add `GitHubDevMCP` in Gemini. You only need a Cloudflare account and a GitHub PAT.
+
 ## Why it is useful
 
 | Entry point | What you get | Best for |
@@ -42,21 +44,20 @@ The products are complementary: Antigravity provides the complete local environm
 
 All upstream GitHub MCP tools are available by default. The GitHub PAT defines repository and resource authority; Gemini selects tools and requests your approval.
 
-## Architecture
-
-### Shared entry points
-
-![Gemini Web and Gemini App share a connector to GitHub Remote MCP through a Cloudflare Worker](assets/architecture.svg)
-
-### Development loop
-
-![Gemini moves from read and plan to branch edits, a Draft PR, CI and code-agent verification, then review and merge](assets/workflow.svg)
-
-The Worker supplies the OAuth/DCR and refresh compatibility Gemini needs, keeps the PAT outside Gemini, and converts GitHub text `EmbeddedResource` blocks into content Gemini can read.
-
 ## Quick start
 
-### 1. Install
+Four steps: **install → deploy → connect Gemini → verify**.
+
+### Prerequisites
+
+| Need | Notes |
+|---|---|
+| Node.js 22+ | Check with `node -v` |
+| Cloudflare account | The free plan is enough; `setup` opens the login flow |
+| GitHub PAT | Fine-grained recommended; [create one here](https://github.com/settings/personal-access-tokens/new), scopes are in “Permission model” below |
+| Browser | Signed in to the Google account you use every day |
+
+### Step 1: Install the CLI
 
 **macOS / Linux**
 
@@ -72,17 +73,32 @@ irm https://github.com/hrygo/gemini-github-mcp-proxy/releases/latest/download/in
 
 The GitHub installer verifies `SHA256SUMS`. No npm account or npm-published package is required.
 
+<details>
+<summary>Manual install (when npm is already available)</summary>
+
+```bash
+npm install --global \
+  --allow-scripts=esbuild,fsevents,workerd \
+  https://github.com/hrygo/gemini-github-mcp-proxy/releases/latest/download/gemini-github-mcp-proxy.tgz
+```
+
+</details>
+
 > **Windows note**: If PowerShell blocks `.ps1` wrapper scripts under your default execution policy, run `gemini-github-mcp.cmd setup` directly without changing system policy. Use PowerShell, Windows Terminal, or CMD rather than Git Bash (`mintty`).
 
-### 2. Deploy
-
-Prepare Node.js 22+, a Cloudflare account, and a GitHub Personal Access Token, then run:
+### Step 2: Deploy the Worker
 
 ```bash
 gemini-github-mcp setup
 ```
 
-If Cloudflare is not logged in yet, `setup` automatically launches the bundled Wrangler browser login (no separate `npx wrangler login` needed). It then guides you to enter and validate your PAT, generates the authorization PIN and signing secret, deploys the Worker, uploads Cloudflare Secrets, and verifies OAuth, DCR, MCP, and authentication endpoints.
+It will:
+
+1. Open the bundled Wrangler browser login if Cloudflare is not signed in yet;
+2. Print the PAT creation link, then validate the token you paste;
+3. Generate the 12-digit authorization PIN and signing secret;
+4. Deploy the Worker and upload three Cloudflare Secrets;
+5. Verify the OAuth, DCR, MCP, and authentication endpoints.
 
 On success, the terminal prints:
 
@@ -93,29 +109,84 @@ MCP URL：https://gemini-github-mcp-proxy.<your-subdomain>.workers.dev/mcp
 GitHub MCP 工具范围：全部（默认透传）
 ```
 
-### 3. Connect Gemini
+> **Save the PIN first.** It is shown only once and you need it in the next step. If you lose it, run `gemini-github-mcp setup --pin-only` to generate a new one without breaking existing connections.
+
+### Step 3: Connect Gemini
 
 1. Open [Gemini Web](https://gemini.google.com/app) → Settings → Connected apps.
 2. Add a custom MCP app named `GitHubDevMCP`.
-3. Enter the MCP URL printed by setup.
-4. Complete OAuth and enter the generated 12-digit PIN.
+3. Enter the `/mcp` URL printed by the previous step.
+4. Complete OAuth and enter the 12-digit PIN.
 5. Open Gemini App with the same Google account and reuse the Connector.
 
-> The authorization page is valid for about 10 minutes. If you see `Session token is expired`, restart the connector flow in Gemini instead of refreshing the old page.
+> **The name must be unique and space-free.** Do not use a name such as `GitHub Dev MCP` that starts with an installed app; the `@` mention may resolve to the built-in GitHub first. Keep it a single word without spaces, hyphens, underscores, or dots.
 >
-> Use a unique single-word connector name that does not collide with an installed app, for example `GitHubDevMCP`; avoid spaces, hyphens, underscores, and dots. If the name starts with an existing app name (for example `GitHub ...`), the `@` mention may resolve to the existing app first and fail to bind the custom app.
+> **The authorization page is valid for about 10 minutes.** If you see `Session token is expired`, restart the connector flow in Gemini instead of refreshing the old page.
 
-### If Gemini cannot register automatically
+#### If Gemini says it cannot register automatically
 
-If Gemini says it could not register with the server, copy the redirect URI from the dialog and run:
+Copy the redirect URI from the dialog and run:
 
 ```bash
 gemini-github-mcp client --redirect-uri "<redirect URI>"
 ```
 
-Paste the returned client ID and secret into Gemini. A current Worker returns a server-derived secret; an older Worker returns no secret, so the CLI generates a local one and prints a notice.
+Paste the returned client ID and secret back into the dialog. A current Worker returns a server-derived secret; an older Worker returns none, so the CLI generates a local one and prints a notice.
 
-In every new chat, type `@`, select `GitHubDevMCP`, then enter your task (for a quick first check, try `@GitHubDevMCP List my 5 most recently updated repositories`).
+### Step 4: Verify
+
+Open a new chat, type `@`, select `GitHubDevMCP` from the menu, and send:
+
+```text
+List my 5 most recently updated repositories. Do not modify anything.
+```
+
+A repository list means the connection works. The first tool call asks for approval; choose “Allow once”.
+
+> Every new chat needs a fresh `@` selection from the menu. Typing `@GitHubDevMCP` as plain text does not bind the tools.
+
+### Stuck?
+
+| Symptom | Fix |
+|---|---|
+| `GitHubDevMCP` is missing from the `@` menu | Confirm the name is unique, start a new chat, and pick it from the menu |
+| “Authorize and continue” does nothing | The page expired; re-add the Connector from Gemini |
+| “Could not register” message | Register manually with `gemini-github-mcp client --redirect-uri` |
+| The model says tools are unavailable | Confirm the `@` binding and use “Auto” or `Neon` mode |
+| Requests return 401 | Delete and re-add the Connector, then authorize again |
+| `429 Too many authorization attempts` | Wait 60 seconds; do not script retries |
+
+More branches are covered in [TROUBLESHOOTING.md](TROUBLESHOOTING.md).
+
+## Architecture
+
+### Shared entry points
+
+```mermaid
+flowchart LR
+  subgraph clients["Your entry points"]
+    web["Gemini Web<br/>first-time setup · desktop work"]
+    app["Gemini App<br/>iOS / Android · separate quota"]
+  end
+  web -->|"OAuth grant + @GitHubDevMCP"| worker["Cloudflare Worker<br/>OAuth / DCR · Bearer check<br/>PAT injection · content fix"]
+  app -->|"same Google account reuses it"| worker
+  worker -->|"Bearer + X-MCP-Tools"| mcp["GitHub Remote MCP<br/>api.githubcopilot.com/mcp"]
+  mcp --> gh[("GitHub<br/>repos · Issues · PRs · Actions")]
+```
+
+### Development loop
+
+```mermaid
+flowchart LR
+  read["① Read and plan<br/>repos · Issues · PRs"] --> edit["② Branch and commit<br/>create_branch · commit"]
+  edit --> pr["③ Draft PR<br/>changes · checks · risks"]
+  pr --> ci["④ CI verification<br/>GitHub Actions"]
+  ci -->|fails| fix["⑤ Code agent fixes<br/>Codex / Antigravity"]
+  fix --> ci
+  ci -->|passes| merge["⑥ Review and merge"]
+```
+
+The Worker supplies the OAuth/DCR and refresh compatibility Gemini needs, keeps the PAT outside Gemini, and converts GitHub text `EmbeddedResource` blocks into content Gemini can read.
 
 ## Permission model
 
